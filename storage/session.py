@@ -24,6 +24,17 @@ class RoundSummary:
 
 
 @dataclass
+class AttributedSummary:
+    round: int
+    individual_summaries: dict[str, list[str]]  # model -> [points]
+    agreement_analysis: str
+    consensus_assessment: str  # "REACHED" / "NOT REACHED"
+    confidence: str  # "HIGH" / "MEDIUM" / "LOW"
+    full_text: str  # Original full moderator output
+    timestamp: str
+
+
+@dataclass
 class SessionData:
     id: str
     prompt: str
@@ -33,6 +44,7 @@ class SessionData:
     status: Literal["running", "completed", "stopped"]
     responses: list[Response]
     summaries: list[RoundSummary]
+    attributed_summaries: list[AttributedSummary]
     completed_rounds: int
     consensus_reached: bool
     consensus_round: int | None
@@ -53,6 +65,7 @@ class Session:
         self.status: Literal["running", "completed", "stopped"] = "running"
         self.responses: list[Response] = []
         self.summaries: list[RoundSummary] = []
+        self.attributed_summaries: list[AttributedSummary] = []
         self.completed_rounds = 0
         self.consensus_reached = False
         self.consensus_round: int | None = None
@@ -79,6 +92,29 @@ class Session:
         self.completed_rounds = round_num
         self.updated_at = datetime.now().isoformat()
         return round_summary
+
+    def add_attributed_summary(
+        self,
+        round_num: int,
+        individual_summaries: dict[str, list[str]],
+        agreement_analysis: str,
+        consensus_assessment: str,
+        confidence: str,
+        full_text: str,
+    ) -> AttributedSummary:
+        attr_summary = AttributedSummary(
+            round=round_num,
+            individual_summaries=individual_summaries,
+            agreement_analysis=agreement_analysis,
+            consensus_assessment=consensus_assessment,
+            confidence=confidence,
+            full_text=full_text,
+            timestamp=datetime.now().isoformat(),
+        )
+        self.attributed_summaries.append(attr_summary)
+        self.completed_rounds = round_num
+        self.updated_at = datetime.now().isoformat()
+        return attr_summary
 
     def mark_completed(self, consensus_round: int | None = None):
         self.status = "completed"
@@ -109,6 +145,17 @@ class Session:
                 return s.summary
         return None
 
+    def get_attributed_summary(self, round_num: int) -> AttributedSummary | None:
+        for s in self.attributed_summaries:
+            if s.round == round_num:
+                return s
+        return None
+
+    def get_latest_attributed_summary(self) -> AttributedSummary | None:
+        if not self.attributed_summaries:
+            return None
+        return self.attributed_summaries[-1]
+
     def to_data(self) -> SessionData:
         return SessionData(
             id=self.id,
@@ -119,6 +166,7 @@ class Session:
             status=self.status,
             responses=self.responses,
             summaries=self.summaries,
+            attributed_summaries=self.attributed_summaries,
             completed_rounds=self.completed_rounds,
             consensus_reached=self.consensus_reached,
             consensus_round=self.consensus_round,
@@ -135,6 +183,7 @@ class Session:
             "status": data.status,
             "responses": [asdict(r) for r in data.responses],
             "summaries": [asdict(s) for s in data.summaries],
+            "attributed_summaries": [asdict(a) for a in data.attributed_summaries],
             "completed_rounds": data.completed_rounds,
             "consensus_reached": data.consensus_reached,
             "consensus_round": data.consensus_round,
@@ -152,6 +201,9 @@ class Session:
         session.status = data["status"]
         session.responses = [Response(**r) for r in data.get("responses", [])]
         session.summaries = [RoundSummary(**s) for s in data.get("summaries", [])]
+        session.attributed_summaries = [
+            AttributedSummary(**a) for a in data.get("attributed_summaries", [])
+        ]
         session.completed_rounds = data.get("completed_rounds", 0)
         session.consensus_reached = data.get("consensus_reached", False)
         session.consensus_round = data.get("consensus_round")

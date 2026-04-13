@@ -34,6 +34,7 @@ class Exporter:
                 (s for s in session.summaries if s.round == round_num),
                 None,
             )
+            attributed = session.get_attributed_summary(round_num)
 
             lines.append(f"## Round {round_num}")
             lines.append("")
@@ -42,6 +43,21 @@ class Exporter:
                 lines.append(f"### {resp.model}")
                 lines.append("")
                 lines.append(resp.content)
+                lines.append("")
+
+            if attributed:
+                lines.append("### Attributed Analysis")
+                lines.append("")
+                for model, points in attributed.individual_summaries.items():
+                    lines.append(f"**{model}**")
+                    for point in points:
+                        lines.append(f"- {point}")
+                    lines.append("")
+                lines.append(f"**Agreement Analysis:** {attributed.agreement_analysis}")
+                lines.append("")
+                lines.append(
+                    f"**Consensus Assessment:** {attributed.consensus_assessment} (Confidence: {attributed.confidence})"
+                )
                 lines.append("")
 
             if round_summary:

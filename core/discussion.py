@@ -73,11 +73,11 @@ class DiscussionOrchestrator:
             return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
 
         elif context_mode == "summary_only":
-            latest_summary = self.session.get_latest_summary()
-            if latest_summary and round_num > 1:
-                return ParticipantPrompt.with_summary(
+            latest_attributed = self.session.get_latest_attributed_summary()
+            if latest_attributed and round_num > 1:
+                return ParticipantPrompt.with_attributed_summary(
                     self.session.prompt,
-                    latest_summary,
+                    latest_attributed,
                     model_position,
                     total_models,
                     round_num,
@@ -87,11 +87,19 @@ class DiscussionOrchestrator:
         elif context_mode == "summary_plus_last_n":
             n = self.config.context.last_n_responses
             recent_responses = self.session.responses[-n:] if n > 0 else []
-            latest_summary = self.session.get_latest_summary()
+            latest_attributed = self.session.get_latest_attributed_summary()
 
             context_parts = []
-            if latest_summary and round_num > 1:
-                context_parts.append(f"=== DISCUSSION SUMMARY ===\n{latest_summary}")
+            if latest_attributed and round_num > 1:
+                individual_text = "\n\n".join(
+                    f"### {model}\n" + "\n".join(f"- {p}" for p in points)
+                    for model, points in latest_attributed.individual_summaries.items()
+                )
+                context_parts.append(
+                    f"=== DISCUSSION ANALYSIS ===\n{individual_text}\n\n"
+                    f"AGREEMENT: {latest_attributed.agreement_analysis}\n\n"
+                    f"CONSENSUS: {latest_attributed.consensus_assessment}"
+                )
             if recent_responses:
                 context_text = "\n\n".join(f"### {r.model}:\n{r.content}" for r in recent_responses)
                 context_parts.append(f"=== RECENT RESPONSES ===\n{context_text}")
@@ -144,7 +152,74 @@ class DiscussionOrchestrator:
             max_tokens=self.config.moderator.max_tokens,
             num_ctx=self.config.moderator.num_ctx,
         )
-        return response.response
+
+        full_text = response.response
+
+        parsed = self._parse_attributed_summary(full_text, round_responses)
+
+        self.session.add_attributed_summary(
+            round_num=round_num,
+            individual_summaries=parsed["individual_summaries"],
+            agreement_analysis=parsed["agreement_analysis"],
+            consensus_assessment=parsed["consensus_assessment"],
+            confidence=parsed["confidence"],
+            full_text=full_text,
+        )
+
+        return full_text
+
+    def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
+        individual_summaries: dict[str, list[str]] = {}
+        agreement_analysis = ""
+        consensus_assessment = "NOT REACHED"
+        confidence = "MEDIUM"
+
+        lines = text.split("\n")
+        current_model = None
+
+        for line in lines:
+            line = line.strip()
+
+            if line.startswith("### "):
+                current_model = line[4:].strip()
+                individual_summaries[current_model] = []
+            elif line.startswith("- ") and current_model:
+                individual_summaries[current_model].append(line[2:])
+            elif line.startswith("## Agreement") or "Agreement Analysis" in line:
+                current_model = None
+            elif line.startswith("## Consensus") or "Consensus Assessment" in line:
+                current_model = None
+            elif "Consensus:" in line:
+                if "REACHED" in line.upper():
+                    consensus_assessment = "REACHED"
+                else:
+                    consensus_assessment = "NOT REACHED"
+            elif "Confidence:" in line or "CONFIDENCE:" in line:
+                if "HIGH" in line.upper():
+                    confidence = "HIGH"
+                elif "LOW" in line.upper():
+                    confidence = "LOW"
+                else:
+                    confidence = "MEDIUM"
+            elif current_model is None and line and not line.startswith("#"):
+                if not agreement_analysis:
+                    agreement_analysis = line
+                else:
+                    agreement_analysis += "\n" + line
+
+        if not individual_summaries:
+            for r in round_responses:
+                individual_summaries[r.model] = ["(No specific points extracted)"]
+
+        if not agreement_analysis:
+            agreement_analysis = "(Analysis not provided)"
+
+        return {
+            "individual_summaries": individual_summaries,
+            "agreement_analysis": agreement_analysis,
+            "consensus_assessment": consensus_assessment,
+            "confidence": confidence,
+        }
 
     async def _check_consensus(self, round_num: int) -> ConsensusResult:
         round_responses = self.session.get_round_responses(round_num)
@@ -157,16 +232,10 @@ class DiscussionOrchestrator:
                 method=self.consensus_detector.method,
             )
 
+        attributed = self.session.get_attributed_summary(round_num)
         summary = self.session.get_summary(round_num)
 
-        if summary:
-            texts = [r.content for r in round_responses]
-            model_names = [r.model for r in round_responses]
-
-            similarity_result = await self.similarity_engine.calculate_similarity_matrix(
-                texts, model_names
-            )
-
+        if summary and attributed:
             summary_embedding = await self.similarity_engine.get_embedding(summary)
 
             similarities_to_summary = []
@@ -175,9 +244,12 @@ class DiscussionOrchestrator:
                 sim = self.similarity_engine.cosine_similarity(resp_embedding, summary_embedding)
                 similarities_to_summary.append((r.model, sim))
 
-            agreeing = sum(
-                1 for _, sim in similarities_to_summary if sim >= self.consensus_detector.threshold
-            )
+            if attributed.consensus_assessment == "REACHED":
+                threshold = 0.50
+            else:
+                threshold = 0.75
+
+            agreeing = sum(1 for _, sim in similarities_to_summary if sim >= threshold)
             percentage = (agreeing / len(round_responses)) * 100
 
             if self.consensus_detector.method == "clustering":
@@ -194,6 +266,9 @@ class DiscussionOrchestrator:
                 details={
                     "similarities_to_summary": similarities_to_summary,
                     "summary_length": len(summary),
+                    "moderator_assessment": attributed.consensus_assessment,
+                    "moderator_confidence": attributed.confidence,
+                    "threshold_used": threshold,
                 },
             )
 
@@ -269,9 +344,15 @@ class DiscussionOrchestrator:
                 self.session.add_summary(round_num, summary)
 
                 print(f"[Round {round_num}] Summary completed ({len(summary)} chars)")
-                print(f"[Round {round_num}] Summary:")
-                for line in summary.strip().split("\n"):
-                    print(f"  {line.strip()}")
+
+                attributed = self.session.get_attributed_summary(round_num)
+                if attributed:
+                    print(
+                        f"[Round {round_num}] Moderator assessment: {attributed.consensus_assessment} (Confidence: {attributed.confidence})"
+                    )
+                    print(f"[Round {round_num}] Individual summaries:")
+                    for model, points in attributed.individual_summaries.items():
+                        print(f"  {model}: {points[0] if points else '(no points)'}")
 
                 if self.config.storage.auto_save:
                     await self.session_manager.save(self.session)
