@@ -1,0 +1,149 @@
+/* Force light text on dark background */
+Screen {
+    background: $surface;
+}
+
+TextArea, #prompt-input {
+    background: #1a1a1a;
+    color: #ffffff;
+    border: solid #4477aa;
+}
+
+TextArea:focus, #prompt-input:focus {
+    border: solid #66aaff;
+}
+
+/* Make all text visible */
+Static {
+    color: #ffffff;
+}
+
+Button {
+    color: #ffffff;
+}
+
+/* Ensure modal content is visible */
+.modal-title {
+    color: #ffffff;
+    text-align: center;
+    text-style: bold;
+    padding: 1;
+}
+
+#prompt-input {
+    height: 10;
+    border: solid #4477aa;
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+/* Main panel styling */
+#content {
+    height: 100%;
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 3fr 1fr;
+    grid-gutter: 1;
+    padding: 1;
+}
+
+#main-panel {
+    background: $panel;
+    border: solid #4477aa;
+    padding: 1;
+}
+
+#side-panel {
+    background: $panel;
+    border: solid #4477aa;
+    padding: 1;
+    layout: vertical;
+}
+
+#transcript {
+    height: 100%;
+    overflow-y: auto;
+}
+
+#transcript-content {
+    background: $surface;
+    padding: 1;
+}
+
+#status-panel {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#status-content {
+    background: $surface;
+    padding: 1;
+}
+
+#similarity-matrix {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#matrix-content {
+    background: $surface;
+    padding: 1;
+}
+
+#controls {
+    height: auto;
+    layout: grid;
+    grid-size: 2;
+    grid-gutter: 1;
+    padding: 1;
+}
+
+#controls Button {
+    width: 100%;
+    min-width: 15;
+    margin: 0;
+    color: #ffffff;
+    background: #444444;
+}
+
+Vertical {
+    color: #ffffff;
+}
+
+.modal-container {
+    align: center middle;
+    width: 90%;
+    height: 70%;
+    background: #222222;
+    border: solid #4477aa;
+    padding: 3;
+}
+
+.modal-container > Vertical {
+    height: 100%;
+}
+
+TextArea {
+    height: 1fr;
+    margin-bottom: 1;
+    border: solid #4477aa;
+    background: #1a1a1a;
+    color: #ffffff;
+}
+
+#session-info, #prompt-preview {
+    padding: 1;
+    margin-bottom: 1;
+    background: $surface;
+    color: #ffffff;
+}
+
+DataTable {
+    height: 1fr;
+    margin-bottom: 1;
+}
+
+.model-option {
+    padding: 1;
+    margin: 0;
+}

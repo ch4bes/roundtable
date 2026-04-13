@@ -1,0 +1,206 @@
+import json
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Literal
+from dataclasses import dataclass, field, asdict
+import aiofiles
+
+
+@dataclass
+class Response:
+    model: str
+    content: str
+    round: int
+    timestamp: str
+    position: int
+
+
+@dataclass
+class RoundSummary:
+    round: int
+    summary: str
+    timestamp: str
+
+
+@dataclass
+class SessionData:
+    id: str
+    prompt: str
+    config_snapshot: dict
+    created_at: str
+    updated_at: str
+    status: Literal["running", "completed", "stopped"]
+    responses: list[Response]
+    summaries: list[RoundSummary]
+    completed_rounds: int
+    consensus_reached: bool
+    consensus_round: int | None
+
+
+class Session:
+    def __init__(
+        self,
+        prompt: str,
+        config: dict,
+        session_id: str | None = None,
+    ):
+        self.id = session_id or str(uuid.uuid4())
+        self.prompt = prompt
+        self.config_snapshot = config
+        self.created_at = datetime.now().isoformat()
+        self.updated_at = self.created_at
+        self.status: Literal["running", "completed", "stopped"] = "running"
+        self.responses: list[Response] = []
+        self.summaries: list[RoundSummary] = []
+        self.completed_rounds = 0
+        self.consensus_reached = False
+        self.consensus_round: int | None = None
+
+    def add_response(self, model: str, content: str, round_num: int, position: int) -> Response:
+        response = Response(
+            model=model,
+            content=content,
+            round=round_num,
+            timestamp=datetime.now().isoformat(),
+            position=position,
+        )
+        self.responses.append(response)
+        self.updated_at = datetime.now().isoformat()
+        return response
+
+    def add_summary(self, round_num: int, summary: str) -> RoundSummary:
+        round_summary = RoundSummary(
+            round=round_num,
+            summary=summary,
+            timestamp=datetime.now().isoformat(),
+        )
+        self.summaries.append(round_summary)
+        self.completed_rounds = round_num
+        self.updated_at = datetime.now().isoformat()
+        return round_summary
+
+    def mark_completed(self, consensus_round: int | None = None):
+        self.status = "completed"
+        self.consensus_reached = consensus_round is not None
+        self.consensus_round = consensus_round
+        self.updated_at = datetime.now().isoformat()
+
+    def mark_stopped(self):
+        self.status = "stopped"
+        self.updated_at = datetime.now().isoformat()
+
+    def get_round_responses(self, round_num: int) -> list[Response]:
+        return [r for r in self.responses if r.round == round_num]
+
+    def get_current_round_responses(self) -> list[Response]:
+        if self.completed_rounds == 0:
+            return []
+        return self.get_round_responses(self.completed_rounds)
+
+    def get_latest_summary(self) -> str | None:
+        if not self.summaries:
+            return None
+        return self.summaries[-1].summary
+
+    def get_summary(self, round_num: int) -> str | None:
+        for s in self.summaries:
+            if s.round == round_num:
+                return s.summary
+        return None
+
+    def to_data(self) -> SessionData:
+        return SessionData(
+            id=self.id,
+            prompt=self.prompt,
+            config_snapshot=self.config_snapshot,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            status=self.status,
+            responses=self.responses,
+            summaries=self.summaries,
+            completed_rounds=self.completed_rounds,
+            consensus_reached=self.consensus_reached,
+            consensus_round=self.consensus_round,
+        )
+
+    def to_dict(self) -> dict:
+        data = self.to_data()
+        return {
+            "id": data.id,
+            "prompt": data.prompt,
+            "config_snapshot": data.config_snapshot,
+            "created_at": data.created_at,
+            "updated_at": data.updated_at,
+            "status": data.status,
+            "responses": [asdict(r) for r in data.responses],
+            "summaries": [asdict(s) for s in data.summaries],
+            "completed_rounds": data.completed_rounds,
+            "consensus_reached": data.consensus_reached,
+            "consensus_round": data.consensus_round,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Session":
+        session = cls(
+            prompt=data["prompt"],
+            config_snapshot=data["config_snapshot"],
+            session_id=data["id"],
+        )
+        session.created_at = data["created_at"]
+        session.updated_at = data["updated_at"]
+        session.status = data["status"]
+        session.responses = [Response(**r) for r in data.get("responses", [])]
+        session.summaries = [RoundSummary(**s) for s in data.get("summaries", [])]
+        session.completed_rounds = data.get("completed_rounds", 0)
+        session.consensus_reached = data.get("consensus_reached", False)
+        session.consensus_round = data.get("consensus_round")
+        return session
+
+
+class SessionManager:
+    def __init__(self, sessions_dir: str = "./sessions"):
+        self.sessions_dir = Path(sessions_dir)
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_session_path(self, session_id: str) -> Path:
+        return self.sessions_dir / f"{session_id}.json"
+
+    async def save(self, session: Session) -> Path:
+        path = self._get_session_path(session.id)
+        async with aiofiles.open(path, "w") as f:
+            await f.write(json.dumps(session.to_dict(), indent=2))
+        return path
+
+    async def load(self, session_id: str) -> Session | None:
+        path = self._get_session_path(session_id)
+        if not path.exists():
+            return None
+        async with aiofiles.open(path, "r") as f:
+            data = json.loads(await f.read())
+        return Session.from_dict(data)
+
+    async def list_sessions(self) -> list[dict]:
+        sessions = []
+        for path in self.sessions_dir.glob("*.json"):
+            async with aiofiles.open(path, "r") as f:
+                data = json.loads(await f.read())
+            sessions.append(
+                {
+                    "id": data["id"],
+                    "prompt": data["prompt"][:100] + "..."
+                    if len(data["prompt"]) > 100
+                    else data["prompt"],
+                    "status": data["status"],
+                    "created_at": data["created_at"],
+                    "completed_rounds": data.get("completed_rounds", 0),
+                }
+            )
+        return sorted(sessions, key=lambda s: s["created_at"], reverse=True)
+
+    async def delete(self, session_id: str) -> bool:
+        path = self._get_session_path(session_id)
+        if path.exists():
+            path.unlink()
+            return True
+        return False

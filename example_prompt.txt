@@ -1,0 +1,1 @@
+What are the most important ethical considerations when developing AI systems that make autonomous decisions affecting human lives? Discuss the trade-offs between safety, fairness, transparency, and efficiency.
