@@ -1,12 +1,14 @@
 import asyncio
+from datetime import datetime
 from typing import Callable, Awaitable
 from dataclasses import dataclass
 from .config import Config
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .consensus import ConsensusDetector, ConsensusResult
+from .input_reader import AsyncInputReader, InputBuffer, get_input_buffer
 from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
-from storage.session import Session, SessionManager
+from storage.session import Session, SessionManager, Response
 
 
 @dataclass
@@ -25,9 +27,13 @@ class DiscussionOrchestrator:
         config: Config,
         session: Session,
         progress_callback: Callable[[DiscussionState], Awaitable[None]] | None = None,
+        human_input_callback: Callable[[str, int, int], Awaitable[str]] | None = None,
+        input_buffer: InputBuffer | None = None,
     ):
         self.config = config
         self.session = session
+        self.human_input_callback = human_input_callback
+        self.input_buffer = input_buffer
         self.ollama = OllamaClient(
             base_url=config.ollama.base_url,
             timeout=config.ollama.timeout,
@@ -133,13 +139,54 @@ class DiscussionOrchestrator:
         )
         return response.response
 
+    async def _handle_human_input(
+        self,
+        context: str,
+        round_num: int,
+        position: int,
+    ) -> str:
+        if self.human_input_callback:
+            return await self.human_input_callback(context, round_num, position)
+
+        if self.config.human_participant.enabled:
+            prompt_text = self.config.human_participant.prompt.format(prompt=self.session.prompt)
+            print(f"\n{'=' * 60}")
+            print(f"ROUND {round_num}: Your turn to respond")
+            print(f"{'=' * 60}")
+            print(f"Prompt: {prompt_text}")
+            print(f"\nContext from discussion:")
+            print(f"{context[:500]}..." if len(context) > 500 else f"\n{context}")
+            print(f"{'-' * 60}")
+
+            if self.input_buffer is not None:
+                async_reader = AsyncInputReader(prompt_text="\nYour response: ")
+                async_reader.start()
+
+                print("(Type your response and press Enter...)")
+                user_input = async_reader.get_input(timeout=60.0)
+
+                if user_input is not None:
+                    print(f"[Round {round_num}] Human completed ({len(user_input)} chars)")
+                    return user_input
+
+                async_reader.stop()
+                print("(No async input received, falling back to prompt)")
+
+            human_input = input("\nYour response: ")
+            return human_input
+
+        return ""
+
     async def _generate_summary(self, round_num: int) -> str:
         round_responses = self.session.get_round_responses(round_num)
-        if not round_responses:
+        human_responses = self.session.get_round_human_responses(round_num)
+
+        all_responses = round_responses + human_responses
+        if not all_responses:
             return ""
 
         responses_data = [
-            {"model": r.model, "content": r.content, "round": r.round} for r in round_responses
+            {"model": r.model, "content": r.content, "round": r.round} for r in all_responses
         ]
 
         prompt = ModeratorPrompt.template(responses_data, round_num)
@@ -155,7 +202,7 @@ class DiscussionOrchestrator:
 
         full_text = response.response
 
-        parsed = self._parse_attributed_summary(full_text, round_responses)
+        parsed = self._parse_attributed_summary(full_text, all_responses)
 
         self.session.add_attributed_summary(
             round_num=round_num,
@@ -223,7 +270,10 @@ class DiscussionOrchestrator:
 
     async def _check_consensus(self, round_num: int) -> ConsensusResult:
         round_responses = self.session.get_round_responses(round_num)
-        if len(round_responses) < 2:
+        human_responses = self.session.get_round_human_responses(round_num)
+
+        all_responses = round_responses + human_responses
+        if len(all_responses) < 2:
             return ConsensusResult(
                 reached=False,
                 percentage=0,
@@ -239,7 +289,7 @@ class DiscussionOrchestrator:
             summary_embedding = await self.similarity_engine.get_embedding(summary)
 
             similarities_to_summary = []
-            for r in round_responses:
+            for r in all_responses:
                 resp_embedding = await self.similarity_engine.get_embedding(r.content)
                 sim = self.similarity_engine.cosine_similarity(resp_embedding, summary_embedding)
                 similarities_to_summary.append((r.model, sim))
@@ -255,13 +305,13 @@ class DiscussionOrchestrator:
             if self.consensus_detector.method == "clustering":
                 reaching = percentage > 50
             else:
-                reaching = agreeing == len(round_responses)
+                reaching = agreeing == len(all_responses)
 
             return ConsensusResult(
                 reached=reaching,
                 percentage=percentage,
                 agreeing_pairs=agreeing,
-                total_pairs=len(round_responses),
+                total_pairs=len(all_responses),
                 method=self.consensus_detector.method,
                 details={
                     "similarities_to_summary": similarities_to_summary,
@@ -272,8 +322,8 @@ class DiscussionOrchestrator:
                 },
             )
 
-        texts = [r.content for r in round_responses]
-        model_names = [r.model for r in round_responses]
+        texts = [r.content for r in all_responses]
+        model_names = [r.model for r in all_responses]
 
         similarity_result = await self.similarity_engine.calculate_similarity_matrix(
             texts, model_names
@@ -285,6 +335,32 @@ class DiscussionOrchestrator:
         if self.progress_callback:
             await self.progress_callback(self.state)
 
+    async def _generate_single_response(
+        self,
+        model_name: str,
+        context: str,
+        model_config,
+        round_num: int,
+        model_idx: int,
+    ) -> Response:
+        print(f"[Round {round_num}] {model_name} responding...")
+
+        response_text = await self._generate_response(
+            model_name=model_name,
+            context=context,
+            model_config=model_config,
+        )
+
+        print(f"[Round {round_num}] {model_name} completed ({len(response_text)} chars)")
+
+        return Response(
+            model=model_name,
+            content=response_text,
+            round=round_num,
+            timestamp=datetime.now().isoformat(),
+            position=model_idx,
+        )
+
     async def run(self) -> Session:
         self.state.is_running = True
 
@@ -293,41 +369,67 @@ class DiscussionOrchestrator:
                 self.state.current_round = round_num
                 self.state.model_order = await self._rotate_model_order(round_num)
 
-                for model_idx, model_name in enumerate(self.state.model_order):
-                    if self.state.is_paused:
-                        while self.state.is_paused:
-                            await asyncio.sleep(0.1)
+                if not self.state.is_running:
+                    break
 
+                await self._notify_progress()
+
+                if self.config.human_participant.enabled:
+                    total_participants = len(self.state.model_order) + 1
+                else:
+                    total_participants = len(self.state.model_order)
+
+                # Start human input capture early (during model responses)
+                human_reader = None
+                if self.config.human_participant.enabled:
+                    human_reader = AsyncInputReader(
+                        prompt_text="\nYour response (type while models respond): "
+                    )
+                    human_reader.start()
+                    print(f"[Round {round_num}] Human can type while models respond...")
+
+                for i, model_name in enumerate(self.state.model_order):
                     if not self.state.is_running:
-                        self.session.mark_stopped()
                         break
 
-                    self.state.current_model_index = model_idx
-                    await self._notify_progress()
-
                     context = await self._build_context(
-                        model_position=model_idx + 1,
-                        total_models=len(self.state.model_order),
+                        model_position=i + 1,
+                        total_models=total_participants,
                         round_num=round_num,
+                    )
+
+                    model_config_obj = next(
+                        (m for m in self.config.models if m.name == model_name),
+                        self.config.models[0],
                     )
 
                     print(f"[Round {round_num}] {model_name} responding...")
 
-                    response_text = await self._generate_response(
-                        model_name=model_name,
-                        context=context,
-                        model_config=self.config.models[0],
+                    response_text = await self.ollama.generate(
+                        model=model_name,
+                        prompt=context,
+                        system=ParticipantPrompt.system(),
+                        temperature=model_config_obj.temperature,
+                        max_tokens=model_config_obj.max_tokens,
+                        num_ctx=model_config_obj.num_ctx,
                     )
 
                     print(
-                        f"[Round {round_num}] {model_name} completed ({len(response_text)} chars)"
+                        f"[Round {round_num}] {model_name} completed ({len(response_text.response)} chars)"
                     )
 
-                    self.session.add_response(
+                    response = Response(
                         model=model_name,
-                        content=response_text,
-                        round_num=round_num,
-                        position=model_idx,
+                        content=response_text.response,
+                        round=round_num,
+                        timestamp=datetime.now().isoformat(),
+                        position=i,
+                    )
+                    self.session.add_response(
+                        model=response.model,
+                        content=response.content,
+                        round_num=response.round,
+                        position=response.position,
                     )
 
                     if self.config.storage.auto_save:
@@ -337,6 +439,51 @@ class DiscussionOrchestrator:
 
                 if not self.state.is_running:
                     break
+
+                if self.config.human_participant.enabled:
+                    human_context = await self._build_context(
+                        model_position=len(self.state.model_order) + 1,
+                        total_models=len(self.state.model_order) + 1,
+                        round_num=round_num,
+                    )
+
+                    if human_reader:
+                        user_input = human_reader.get_input(timeout=90.0)
+                        if user_input is None or user_input.strip() == "":
+                            print("(No input received during model response)")
+                            print(f"\n{'=' * 60}")
+                            print(f"ROUND {round_num}: Your turn to respond")
+                            print(f"{'=' * 60}")
+                            prompt_text = self.config.human_participant.prompt.format(
+                                prompt=self.session.prompt
+                            )
+                            print(f"Prompt: {prompt_text}")
+                            print(f"\nContext from discussion:")
+                            print(
+                                f"{human_context[:500]}..."
+                                if len(human_context) > 500
+                                else f"\n{human_context}"
+                            )
+                            print(f"{'-' * 60}")
+                            user_input = input("\nYour response: ")
+                        human_reader.stop()
+                    else:
+                        user_input = await self._handle_human_input(
+                            context=human_context,
+                            round_num=round_num,
+                            position=len(self.state.model_order),
+                        )
+
+                    print(f"[Round {round_num}] Human completed ({len(user_input)} chars)")
+
+                    self.session.add_human_response(
+                        content=user_input,
+                        round_num=round_num,
+                        position=len(self.state.model_order),
+                    )
+
+                    if self.config.storage.auto_save:
+                        await self.session_manager.save(self.session)
 
                 print(f"[Round {round_num}] Moderator generating summary...")
 

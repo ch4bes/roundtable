@@ -39,6 +39,12 @@ class StorageConfig(BaseModel):
     export_format: Literal["md", "json"] = "md"
 
 
+class HumanParticipantConfig(BaseModel):
+    enabled: bool = False
+    prompt: str = "Share your perspective on: {prompt}"
+    display_name: str = "Human"
+
+
 class Config(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     models: list[ModelConfig] = Field(
@@ -55,6 +61,7 @@ class Config(BaseSettings):
         default_factory=lambda: ModelConfig(name="qwen3.5:9b", temperature=0.5, max_tokens=2048)
     )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
+    human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
     discussion: DiscussionConfig = Field(default_factory=DiscussionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)

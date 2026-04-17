@@ -43,6 +43,7 @@ class SessionData:
     updated_at: str
     status: Literal["running", "completed", "stopped"]
     responses: list[Response]
+    human_responses: list[Response]
     summaries: list[RoundSummary]
     attributed_summaries: list[AttributedSummary]
     completed_rounds: int
@@ -64,6 +65,7 @@ class Session:
         self.updated_at = self.created_at
         self.status: Literal["running", "completed", "stopped"] = "running"
         self.responses: list[Response] = []
+        self.human_responses: list[Response] = []
         self.summaries: list[RoundSummary] = []
         self.attributed_summaries: list[AttributedSummary] = []
         self.completed_rounds = 0
@@ -81,6 +83,21 @@ class Session:
         self.responses.append(response)
         self.updated_at = datetime.now().isoformat()
         return response
+
+    def add_human_response(self, content: str, round_num: int, position: int) -> Response:
+        response = Response(
+            model="human",
+            content=content,
+            round=round_num,
+            timestamp=datetime.now().isoformat(),
+            position=position,
+        )
+        self.human_responses.append(response)
+        self.updated_at = datetime.now().isoformat()
+        return response
+
+    def get_round_human_responses(self, round_num: int) -> list[Response]:
+        return [r for r in self.human_responses if r.round == round_num]
 
     def add_summary(self, round_num: int, summary: str) -> RoundSummary:
         round_summary = RoundSummary(
@@ -165,6 +182,7 @@ class Session:
             updated_at=self.updated_at,
             status=self.status,
             responses=self.responses,
+            human_responses=self.human_responses,
             summaries=self.summaries,
             attributed_summaries=self.attributed_summaries,
             completed_rounds=self.completed_rounds,
@@ -182,6 +200,7 @@ class Session:
             "updated_at": data.updated_at,
             "status": data.status,
             "responses": [asdict(r) for r in data.responses],
+            "human_responses": [asdict(r) for r in data.human_responses],
             "summaries": [asdict(s) for s in data.summaries],
             "attributed_summaries": [asdict(a) for a in data.attributed_summaries],
             "completed_rounds": data.completed_rounds,
@@ -200,6 +219,7 @@ class Session:
         session.updated_at = data["updated_at"]
         session.status = data["status"]
         session.responses = [Response(**r) for r in data.get("responses", [])]
+        session.human_responses = [Response(**r) for r in data.get("human_responses", [])]
         session.summaries = [RoundSummary(**s) for s in data.get("summaries", [])]
         session.attributed_summaries = [
             AttributedSummary(**a) for a in data.get("attributed_summaries", [])

@@ -65,5 +65,10 @@
   "default_prompt": "",
   "embeddings": {
     "model": "qwen3-embedding:8b"
+  },
+  "human_participant": {
+    "enabled": true,
+    "prompt": "Share your perspective on: {prompt}",
+    "display_name": "Human"
   }
 }
