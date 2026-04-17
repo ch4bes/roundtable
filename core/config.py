@@ -49,6 +49,7 @@ class Config(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     models: list[ModelConfig] = Field(
         default_factory=lambda: [
+            ModelConfig(name="qwen3.6:35b-a3b"),
             ModelConfig(name="qwen3.5:35b"),
             ModelConfig(name="qwen3.5:27b"),
             ModelConfig(name="qwen3:30b-thinking"),
