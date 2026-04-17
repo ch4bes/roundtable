@@ -59,7 +59,9 @@ class Config(BaseSettings):
         ]
     )
     moderator: ModelConfig = Field(
-        default_factory=lambda: ModelConfig(name="qwen3.5:9b", temperature=0.5, max_tokens=2048)
+        default_factory=lambda: ModelConfig(
+            name="qwen3.6:35b-a3b", temperature=0.5, max_tokens=2048
+        )
     )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
