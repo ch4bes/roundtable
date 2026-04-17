@@ -21,6 +21,12 @@ class EmbeddingsConfig(BaseModel):
     model: str = "nomic-embed-text"
 
 
+class ConsensusConfig(BaseModel):
+    mode: Literal["moderator_decides", "programmatic_decides"] = "moderator_decides"
+    threshold: float = Field(default=0.75, ge=0, le=1)
+    method: Literal["pairwise", "clustering"] = "clustering"
+
+
 class DiscussionConfig(BaseModel):
     max_rounds: int = Field(default=10, gt=0)
     consensus_threshold: float = Field(default=0.75, ge=0, le=1)
@@ -65,6 +71,7 @@ class Config(BaseSettings):
     )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
+    consensus: ConsensusConfig = Field(default_factory=ConsensusConfig)
     discussion: DiscussionConfig = Field(default_factory=DiscussionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)

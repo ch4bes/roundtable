@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+import numpy as np
 
 if TYPE_CHECKING:
     from storage.session import AttributedSummary
@@ -40,6 +41,64 @@ Summary: Brief statement"""
     def template(responses: list[dict[str, str]], round_num: int) -> str:
         response_text = "\n\n".join(f"### {r['model']}\n{r['content']}" for r in responses)
         return f"Round {round_num} responses:\n\n{response_text}\n\n" + "Follow the format above."
+
+    @staticmethod
+    def _format_similarity_matrix(matrix: np.ndarray, model_names: list[str]) -> str:
+        n = matrix.shape[0]
+        if n == 0:
+            return "(No responses to compare)"
+
+        short_names = []
+        for name in model_names:
+            parts = name.split(":")
+            if len(parts) >= 2:
+                short = f"{parts[0].replace('qwen', 'q')}{parts[1][:3]}"
+                short_names.append(short)
+            else:
+                short_names.append(name[:8])
+
+        max_name_len = max(len(name) for name in short_names)
+        col_width = max(8, max_name_len + 2)
+
+        header = "| " + " | ".join(name.center(col_width) for name in short_names) + " |"
+        separator = "|" + "|".join("-" * (col_width + 2) for _ in range(n + 1)) + "|"
+
+        rows = []
+        for i in range(n):
+            row_values = [short_names[i].ljust(max_name_len)]
+            for j in range(n):
+                if i == j:
+                    row_values.append(f"{matrix[i, j]:.2f}".center(col_width))
+                elif i < j:
+                    row_values.append(f"{matrix[i, j]:.2f}".center(col_width))
+                else:
+                    row_values.append(" " * col_width)
+            rows.append("| " + " | ".join(row_values) + " |")
+
+        return "\n".join([header, separator] + rows)
+
+    @staticmethod
+    def template_with_similarity_matrix(
+        responses: list[dict[str, str]],
+        round_num: int,
+        similarity_matrix: np.ndarray,
+        model_names: list[str],
+    ) -> str:
+        response_text = "\n\n".join(f"### {r['model']}\n{r['content']}" for r in responses)
+
+        matrix_table = ModeratorPrompt._format_similarity_matrix(similarity_matrix, model_names)
+
+        return f"""Round {round_num} responses:
+
+{response_text}
+
+=== SIMILARITY MATRIX ===
+Pairwise similarities between responses:
+
+{matrix_table}
+
+Follow the format above. Use the similarity matrix as additional data to inform your consensus assessment.
+High similarity (>0.7) indicates strong agreement. Low similarity (<0.4) indicates significant disagreement."""
 
 
 @dataclass

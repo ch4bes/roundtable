@@ -177,7 +177,9 @@ class DiscussionOrchestrator:
 
         return ""
 
-    async def _generate_summary(self, round_num: int) -> str:
+    async def _generate_summary(
+        self, round_num: int, similarity_matrix=None, model_names: list[str] = None
+    ) -> str:
         round_responses = self.session.get_round_responses(round_num)
         human_responses = self.session.get_round_human_responses(round_num)
 
@@ -189,7 +191,12 @@ class DiscussionOrchestrator:
             {"model": r.model, "content": r.content, "round": r.round} for r in all_responses
         ]
 
-        prompt = ModeratorPrompt.template(responses_data, round_num)
+        if similarity_matrix is not None and model_names:
+            prompt = ModeratorPrompt.template_with_similarity_matrix(
+                responses_data, round_num, similarity_matrix, model_names
+            )
+        else:
+            prompt = ModeratorPrompt.template(responses_data, round_num)
 
         response = await self.ollama.generate(
             model=self.config.moderator.name,
@@ -236,11 +243,9 @@ class DiscussionOrchestrator:
                 current_model = None
             elif line.startswith("## Consensus") or "Consensus Assessment" in line:
                 current_model = None
-            elif "Consensus:" in line:
+            elif "Consensus:" in line and consensus_assessment == "NOT REACHED":
                 if "REACHED" in line.upper():
                     consensus_assessment = "REACHED"
-                else:
-                    consensus_assessment = "NOT REACHED"
             elif "Confidence:" in line or "CONFIDENCE:" in line:
                 if "HIGH" in line.upper():
                     confidence = "HIGH"
@@ -268,7 +273,9 @@ class DiscussionOrchestrator:
             "confidence": confidence,
         }
 
-    async def _check_consensus(self, round_num: int) -> ConsensusResult:
+    async def _check_consensus(
+        self, round_num: int, return_matrix: bool = False
+    ) -> ConsensusResult:
         round_responses = self.session.get_round_responses(round_num)
         human_responses = self.session.get_round_human_responses(round_num)
 
@@ -284,6 +291,26 @@ class DiscussionOrchestrator:
 
         attributed = self.session.get_attributed_summary(round_num)
         summary = self.session.get_summary(round_num)
+
+        if return_matrix:
+            texts = [r.content for r in all_responses]
+            model_names = [r.model for r in all_responses]
+
+            similarity_result = await self.similarity_engine.calculate_similarity_matrix(
+                texts, model_names
+            )
+
+            return ConsensusResult(
+                reached=False,
+                percentage=0,
+                agreeing_pairs=0,
+                total_pairs=0,
+                method=self.consensus_detector.method,
+                details={
+                    "similarity_matrix": similarity_result.matrix,
+                    "model_names": model_names,
+                },
+            )
 
         if summary and attributed:
             summary_embedding = await self.similarity_engine.get_embedding(summary)
@@ -487,7 +514,13 @@ class DiscussionOrchestrator:
 
                 print(f"[Round {round_num}] Moderator generating summary...")
 
-                summary = await self._generate_summary(round_num)
+                raw_consensus = await self._check_consensus(round_num, return_matrix=True)
+                sim_matrix = raw_consensus.details.get("similarity_matrix")
+                sim_names = raw_consensus.details.get("model_names", [])
+
+                summary = await self._generate_summary(
+                    round_num, similarity_matrix=sim_matrix, model_names=sim_names
+                )
                 self.session.add_summary(round_num, summary)
 
                 print(f"[Round {round_num}] Summary completed ({len(summary)} chars)")
@@ -504,15 +537,20 @@ class DiscussionOrchestrator:
                 if self.config.storage.auto_save:
                     await self.session_manager.save(self.session)
 
-                consensus_result = await self._check_consensus(round_num)
-                self.state.consensus_result = consensus_result
-                await self._notify_progress()
+                if self.config.consensus.mode == "moderator_decides":
+                    consensus_reached = (
+                        attributed.consensus_assessment == "REACHED" if attributed else False
+                    )
+                else:
+                    consensus_result = await self._check_consensus(round_num)
+                    self.state.consensus_result = consensus_result
+                    consensus_reached = consensus_result.reached
 
                 print(
-                    f"[Round {round_num}] Consensus: {consensus_result.percentage:.0f}% ({consensus_result.method}, cluster_size={consensus_result.agreeing_pairs})"
+                    f"[Round {round_num}] Consensus: {'REACHED' if consensus_reached else 'NOT REACHED'}"
                 )
 
-                if consensus_result.reached:
+                if consensus_reached:
                     self.session.mark_completed(consensus_round=round_num)
                     await self.session_manager.save(self.session)
                     break

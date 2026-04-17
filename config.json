@@ -76,5 +76,10 @@
     "enabled": true,
     "prompt": "Share your perspective on: {prompt}",
     "display_name": "Human"
+  },
+  "consensus": {
+    "mode": "moderator_decides",
+    "threshold": 0.75,
+    "method": "clustering"
   }
 }
