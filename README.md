@@ -18,7 +18,7 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 - Python 3.10+
 - Ollama running locally (http://localhost:11434)
 - At least 2 LLM models installed in Ollama
-- Embedding model recommended (e.g., `nomic-embed-text`) for better similarity detection
+- Embedding model recommended (e.g., `qwen3-embedding:8b`) for better similarity detection
   - Without embeddings, falls back to Jaccard similarity (word overlap)
 
 ## Installation
@@ -36,24 +36,25 @@ Edit `config.json` to customize your setup:
 {
   "ollama": {
     "base_url": "http://localhost:11434",
-    "timeout": 120
+    "timeout": 300
   },
   "models": [
-    {"name": "llama3.2", "temperature": 0.7, "max_tokens": 1024},
-    {"name": "mistral", "temperature": 0.7, "max_tokens": 1024},
-    {"name": "gemma2", "temperature": 0.7, "max_tokens": 1024}
+    {"name": "qwen3.6:35b-a3b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768},
+    {"name": "qwen3.5:35b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768},
+    {"name": "gemma4:31b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768}
   ],
   "moderator": {
-    "name": "llama3.2",
+    "name": "qwen3.6:35b-a3b",
     "temperature": 0.5,
-    "max_tokens": 512
+    "max_tokens": 2048,
+    "num_ctx": 32768
   },
   "embeddings": {
-    "model": "nomic-embed-text"
+    "model": "qwen3-embedding:8b"
   },
   "discussion": {
     "max_rounds": 10,
-    "consensus_threshold": 0.85
+    "consensus_threshold": 0.75
   }
 }
 ```
