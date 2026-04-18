@@ -46,3 +46,8 @@ htmlcov/
 
 # Local config overrides
 config.local.json
+
+# Generated/Local files
+uv.lock
+CONFIGURED_MODELS.md
+PROJECT_SUMMARY.md
