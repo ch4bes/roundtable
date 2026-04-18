@@ -26,12 +26,6 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 ```bash
 # Clone the repository
 cd roundtable
-
-# Install with Poetry
-poetry install
-
-# Or install with pip
-pip install -e .
 ```
 
 ## Configuration
@@ -70,8 +64,6 @@ Edit `config.json` to customize your setup:
 
 ```bash
 roundtable
-# or
-poetry run roundtable
 ```
 
 ### CLI Mode
@@ -115,7 +107,7 @@ roundtable --export SESSION_ID --format md
 
 - **With embeddings**: Uses embedding models to vectorize responses, calculates cosine similarity
 - **Without embeddings**: Falls back to Jaccard similarity (word overlap analysis)
-- Consensus reached when all pairs exceed threshold (default: 0.85)
+- Consensus reached when all pairs exceed threshold
 - Progress shown as percentage in TUI
 
 ## Project Structure
@@ -144,19 +136,6 @@ roundtable/
 
 See exported Markdown files in `sessions/` directory for examples.
 
-## Development
-
-```bash
-# Run tests
-poetry run pytest
-
-# Format code
-poetry run black .
-
-# Lint code
-poetry run ruff check .
-```
-
 ## Troubleshooting
 
 ### Ollama Not Available
@@ -173,16 +152,14 @@ roundtable --check-ollama
 
 ```bash
 # Install required models
-ollama pull llama3.2
-ollama pull mistral
-ollama pull nomic-embed-text
+ollama pull [model]
 ```
 
 ### Consensus Never Reached
 
 - Lower `consensus_threshold` in config (e.g., 0.75)
 - Increase `max_rounds` for more discussion time
-- Use more similar models (e.g., different versions of Llama)
+- Use more similar models (e.g., different versions of Qwen)
 
 ## License
 
