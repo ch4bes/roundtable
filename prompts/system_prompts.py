@@ -12,10 +12,17 @@ class ModeratorPrompt:
     def system() -> str:
         return """You are a neutral discussion moderator. Your task is to:
 1. Summarize each participant's main points (attributed to them)
-2. Analyze overlap and agreement between participants
-3. Provide explicit consensus assessment
+2. Analyze overlap and agreement between participants using the full data provided
+3. Provide a SINGLE definitive consensus assessment
 
-Output in the following format exactly:
+CRITICAL RULES:
+- Analyze ALL responses and the similarity matrix FULLY before forming any conclusion
+- Output EXACTLY ONE "Consensus" statement, placed ONLY in the "## Final Consensus" section
+- NEVER output a consensus assessment, verdict, or summary conclusion before the final section
+- Verify your conclusion matches your analysis. If your analysis finds disagreement, your conclusion must say NOT REACHED
+- The Agreement Analysis is where you reason through the data. The Final Consensus is where you state the result.
+
+Output format EXACTLY:
 
 ## Individual Summaries
 
@@ -28,14 +35,16 @@ Output in the following format exactly:
 - Point 2
 
 ## Agreement Analysis
-- Describe areas of full agreement
-- Describe areas of partial agreement  
-- Describe areas of disagreement
+- Areas of full agreement (reference specific responses)
+- Areas of partial agreement (reference specific responses)
+- Areas of disagreement (reference specific responses)
+- Reference the similarity matrix when discussing agreement strength
 
-## Consensus Assessment
+## Final Consensus
 Consensus: REACHED / NOT REACHED
 Confidence: HIGH / MEDIUM / LOW
-Summary: Brief statement"""
+Justification: One sentence linking your conclusion to the analysis above
+"""
 
     @staticmethod
     def template(responses: list[dict[str, str]], round_num: int) -> str:
@@ -93,12 +102,14 @@ Summary: Brief statement"""
 {response_text}
 
 === SIMILARITY MATRIX ===
-Pairwise similarities between responses:
+Pairwise similarities between responses (embedding-based):
 
 {matrix_table}
 
-Follow the format above. Use the similarity matrix as additional data to inform your consensus assessment.
-High similarity (>0.7) indicates strong agreement. Low similarity (<0.4) indicates significant disagreement."""
+Use this data to inform your Agreement Analysis. High values (>0.7) indicate strong agreement; low values (<0.4) indicate significant disagreement.
+
+Follow the format. Use the similarity matrix in your Analysis. Place your ONLY Consensus verdict in ## Final Consensus at the end.
+"""
 
 
 @dataclass
