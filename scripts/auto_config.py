@@ -50,6 +50,54 @@ def parse_size(size_str: str) -> float:
         return 0
 
 
+def select_models(all_models: list[dict]) -> list[dict]:
+    """Let user manually select which models to include."""
+    print("\nAvailable models:")
+    for i, model in enumerate(all_models, 1):
+        size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
+        print(f"  {i}. {model['name']} ({size})")
+    
+    print("\nEnter model numbers to include (e.g., '1,3,5' or '1-4' or 'all'):")
+    print("Or press Enter to auto-select diverse models")
+    user_input = input("Selection: ").strip().lower()
+    
+    if user_input == "" or user_input == "all":
+        print("\nAuto-selecting diverse models...")
+        return select_diverse_models(all_models, count=3)
+    
+    # Parse selection: "1,3,5" or "1-4" or "1 3 5"
+    selected = []
+    seen_indices = set()
+    
+    # Handle different separators: comma, space, dash
+    for part in user_input.replace(",", " ").split():
+        if "-" in part:
+            # Handle range like "1-4"
+            try:
+                start, end = map(int, part.split("-"))
+                for idx in range(start, end + 1):
+                    if 1 <= idx <= len(all_models) and idx not in seen_indices:
+                        selected.append(all_models[idx - 1])
+                        seen_indices.add(idx)
+            except:
+                pass
+        else:
+            # Handle single number
+            try:
+                idx = int(part)
+                if 1 <= idx <= len(all_models) and idx not in seen_indices:
+                    selected.append(all_models[idx - 1])
+                    seen_indices.add(idx)
+            except:
+                pass
+    
+    if not selected:
+        print("\nNo valid selection, auto-selecting diverse models...")
+        return select_diverse_models(all_models, count=3)
+    
+    return selected
+
+
 def select_diverse_models(models: list[dict], count: int = 3) -> list[dict]:
     """Select models of different sizes for diversity."""
     if len(models) <= count:
@@ -139,15 +187,12 @@ def update_config():
     print(f"✓ Found {len(all_models)} models\n")
 
     # Interactive prompts for key configuration
-    num_models = prompt_with_default("How many models to use?", 3)
-    num_models = min(num_models, len(all_models))
-    
     max_rounds = prompt_with_default("Max discussion rounds?", 10)
     consensus_threshold = prompt_float_with_default("Consensus threshold?", 0.75)
     timeout = prompt_with_default("Ollama timeout in seconds?", 300)
 
-    # Select diverse models
-    selected = select_diverse_models(all_models, count=num_models)
+    # Select models (manual or fallback to auto-diverse)
+    selected = select_models(all_models)
     moderator = select_moderator(selected)
     embedding_model = has_embedding_model(all_models)
 
