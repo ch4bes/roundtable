@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Callable, Awaitable
 from dataclasses import dataclass
+import numpy as np
 from .config import Config
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
@@ -489,7 +490,8 @@ class DiscussionOrchestrator:
                 print(f"[Round {round_num}] Moderator generating summary...")
 
                 raw_consensus = await self._check_consensus(round_num, return_matrix=True)
-                sim_matrix = raw_consensus.details.get("similarity_matrix")
+                sim_matrix_raw = raw_consensus.details.get("similarity_matrix")
+                sim_matrix = np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
                 sim_names = raw_consensus.details.get("model_names", [])
 
                 summary = await self._generate_summary(
