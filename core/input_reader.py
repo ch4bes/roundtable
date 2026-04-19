@@ -26,7 +26,7 @@ class AsyncInputReader:
         except Exception:
             self._input_queue.put("")
 
-    def get_input(self, timeout: float = 0) -> Optional[str]:
+    def get_input(self, timeout: float = None) -> Optional[str]:
         try:
             return self._input_queue.get(timeout=timeout)
         except queue.Empty:

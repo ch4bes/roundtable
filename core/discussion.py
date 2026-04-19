@@ -307,7 +307,7 @@ class DiscussionOrchestrator:
                 total_pairs=0,
                 method=self.consensus_detector.method,
                 details={
-                    "similarity_matrix": similarity_result.matrix,
+                    "similarity_matrix": similarity_result.matrix.tolist(),
                     "model_names": model_names,
                 },
             )
@@ -327,7 +327,7 @@ class DiscussionOrchestrator:
                 threshold = 0.75
 
             agreeing = sum(1 for _, sim in similarities_to_summary if sim >= threshold)
-            percentage = (agreeing / len(round_responses)) * 100
+            percentage = (agreeing / len(all_responses)) * 100
 
             if self.consensus_detector.method == "clustering":
                 reaching = percentage > 50
@@ -362,33 +362,7 @@ class DiscussionOrchestrator:
         if self.progress_callback:
             await self.progress_callback(self.state)
 
-    async def _generate_single_response(
-        self,
-        model_name: str,
-        context: str,
-        model_config,
-        round_num: int,
-        model_idx: int,
-    ) -> Response:
-        print(f"[Round {round_num}] {model_name} responding...")
-
-        response_text = await self._generate_response(
-            model_name=model_name,
-            context=context,
-            model_config=model_config,
-        )
-
-        print(f"[Round {round_num}] {model_name} completed ({len(response_text)} chars)")
-
-        return Response(
-            model=model_name,
-            content=response_text,
-            round=round_num,
-            timestamp=datetime.now().isoformat(),
-            position=model_idx,
-        )
-
-    async def run(self) -> Session:
+    async def run() -> Session:
         self.state.is_running = True
 
         try:
