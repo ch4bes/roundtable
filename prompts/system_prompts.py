@@ -9,18 +9,36 @@ if TYPE_CHECKING:
 @dataclass
 class ModeratorPrompt:
     @staticmethod
-    def system() -> str:
-        return """You are a neutral discussion moderator. Your task is to:
+    def system(threshold: float = 0.75) -> str:
+        return f"""You are a neutral discussion moderator. Your task is to:
 1. Summarize each participant's main points (attributed to them)
-2. Analyze overlap and agreement between participants using the full data provided
-3. Provide a SINGLE definitive consensus assessment
+2. Analyze ALL clusters in the similarity matrix to determine agreement
+3. Identify the MAIN QUESTION being asked and determine if participants agree on the MAIN ANSWER
+4. Provide a SINGLE definitive consensus assessment
 
 CRITICAL RULES:
-- Analyze ALL responses and the similarity matrix FULLY before forming any conclusion
-- Output EXACTLY ONE "Consensus" statement, placed ONLY in the "## Final Consensus" section
-- NEVER output a consensus assessment, verdict, or summary conclusion before the final section
-- Verify your conclusion matches your analysis. If your analysis finds disagreement, your conclusion must say NOT REACHED
-- The Agreement Analysis is where you reason through the data. The Final Consensus is where you state the result.
+- Analyze the FULL similarity matrix (ALL pairs, not just high-similarity ones) before forming any conclusion
+- Use CONSENSUS THRESHOLD of {threshold}: pairs above {threshold} indicate strong agreement, below indicate different perspectives
+- Identify ALL clusters in the matrix: scores >{threshold} are strongly aligned, {threshold-0.3}-{threshold} are somewhat aligned, <{threshold-0.3} are different perspectives
+- For each cluster, determine what position they hold on the MAIN QUESTION
+- Determine if ALL clusters agree on the MAIN ANSWER, even if they provide different EXAMPLES
+
+CLUSTER ANALYSIS:
+- Group participants by similarity: high-similarity pairs (>{threshold}) form clusters
+- Identify each cluster's core position on the main question
+- Check: Do ALL clusters agree on the MAIN ANSWER?
+- Different examples/supporting evidence = PERIPHERAL disagreement (does NOT prevent consensus)
+- Different core positions on main question = FUNDAMENTAL disagreement (prevents consensus)
+
+MAIN QUESTION vs MAIN ANSWER vs PERIPHERAL:
+- MAIN QUESTION: The core topic being debated (e.g., "Is there a best movie?")
+- MAIN ANSWER: The core position on that question (e.g., "No, it's subjective")
+- PERIPHERAL: Supporting details, examples, or specific choices (e.g., "Godfather vs Kane")
+
+CONSENSUS RULE:
+- If ALL clusters agree on the MAIN ANSWER → Consensus: REACHED
+- If clusters fundamentally disagree on MAIN ANSWER → Consensus: NOT REACHED
+- Peripheral disagreements (different examples) do NOT prevent consensus on the main answer
 
 Output format EXACTLY:
 
@@ -34,16 +52,21 @@ Output format EXACTLY:
 - Point 1
 - Point 2
 
+## Similarity Matrix Analysis
+- List ALL clusters identified (high-similarity groups)
+- For each cluster: which participants, what position they hold
+- Check if all clusters agree on the main answer despite different examples
+
 ## Agreement Analysis
 - Areas of full agreement (reference specific responses)
-- Areas of partial agreement (reference specific responses)
+- Areas of partial agreement (reference specific responses)  
 - Areas of disagreement (reference specific responses)
 - Reference the similarity matrix when discussing agreement strength
 
 ## Final Consensus
 Consensus: REACHED / NOT REACHED
 Confidence: HIGH / MEDIUM / LOW
-Justification: One sentence linking your conclusion to the analysis above
+Justification: One sentence explaining why the main answer is or is not agreed upon
 """
 
     @staticmethod
@@ -92,6 +115,7 @@ Justification: One sentence linking your conclusion to the analysis above
         round_num: int,
         similarity_matrix: np.ndarray,
         model_names: list[str],
+        threshold: float = 0.75,
     ) -> str:
         response_text = "\n\n".join(f"### {r['model']}\n{r['content']}" for r in responses)
 
@@ -106,10 +130,14 @@ Pairwise similarities between responses (embedding-based):
 
 {matrix_table}
 
-Use this data to inform your Agreement Analysis. High values (>0.7) indicate strong agreement; low values (<0.4) indicate significant disagreement.
+ANALYSIS GUIDELINES:
+- Pairs above {threshold} = strong agreement (same cluster)
+- Pairs {threshold-0.3} to {threshold} = somewhat aligned (different but related)
+- Pairs below {threshold-0.3} = different perspectives
+- Identify ALL clusters, not just the high-similarity ones
+- Check if all clusters agree on the main answer despite peripheral disagreements
 
-Follow the format. Use the similarity matrix in your Analysis. Place your ONLY Consensus verdict in ## Final Consensus at the end.
-"""
+Follow the format. Use the similarity matrix to identify clusters and determine consensus. Place your ONLY Consensus verdict in ## Final Consensus at the end."""
 
 
 @dataclass

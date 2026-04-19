@@ -86,6 +86,7 @@
   "consensus": {
     "mode": "moderator_decides",
     "threshold": 0.75,
-    "method": "clustering"
+    "method": "clustering",
+    "strictness": "main_point"
   }
 }

@@ -25,6 +25,7 @@ class ConsensusConfig(BaseModel):
     mode: Literal["moderator_decides", "programmatic_decides"] = "moderator_decides"
     threshold: float = Field(default=0.75, ge=0, le=1)
     method: Literal["pairwise", "clustering"] = "clustering"
+    strictness: Literal["full", "main_point"] = "main_point"
 
 
 class DiscussionConfig(BaseModel):

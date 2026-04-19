@@ -192,9 +192,11 @@ class DiscussionOrchestrator:
             {"model": r.model, "content": r.content, "round": r.round} for r in all_responses
         ]
 
+        threshold = self.config.discussion.consensus_threshold
+
         if similarity_matrix is not None and model_names:
             prompt = ModeratorPrompt.template_with_similarity_matrix(
-                responses_data, round_num, similarity_matrix, model_names
+                responses_data, round_num, similarity_matrix, model_names, threshold
             )
         else:
             prompt = ModeratorPrompt.template(responses_data, round_num)
@@ -202,7 +204,7 @@ class DiscussionOrchestrator:
         response = await self.ollama.generate(
             model=self.config.moderator.name,
             prompt=prompt,
-            system=ModeratorPrompt.system(),
+            system=ModeratorPrompt.system(threshold),
             temperature=self.config.moderator.temperature,
             max_tokens=self.config.moderator.max_tokens,
             num_ctx=self.config.moderator.num_ctx,
@@ -232,6 +234,7 @@ class DiscussionOrchestrator:
         lines = text.split("\n")
         current_model = None
 
+        final_consensus_section_started = False
         for line in lines:
             line = line.strip()
 
@@ -242,10 +245,26 @@ class DiscussionOrchestrator:
                 individual_summaries[current_model].append(line[2:])
             elif line.startswith("## Agreement") or "Agreement Analysis" in line:
                 current_model = None
-            elif line.startswith("## Consensus") or "Consensus Assessment" in line:
+            elif line.startswith("## Final Consensus") or "Final Consensus" in line:
                 current_model = None
-            elif "Consensus:" in line and consensus_assessment == "NOT REACHED":
-                if "REACHED" in line.upper():
+                final_consensus_section_started = True
+            elif line.startswith("## Consensus") or line.startswith("## Final"):
+                current_model = None
+                final_consensus_section_started = True
+            elif final_consensus_section_started and "Consensus:" in line:
+                if "NOT REACHED" in line.upper():
+                    consensus_assessment = "NOT REACHED"
+                elif "REACHED" in line.upper():
+                    consensus_assessment = "REACHED"
+            elif not final_consensus_section_started and ("Consensus Assessment:" in line or "**Consensus Assessment:**" in line):
+                if "NOT REACHED" in line.upper():
+                    consensus_assessment = "NOT REACHED"
+                elif "REACHED" in line.upper():
+                    consensus_assessment = "REACHED"
+            elif "Consensus:" in line:
+                if "NOT REACHED" in line.upper():
+                    consensus_assessment = "NOT REACHED"
+                elif "REACHED" in line.upper() and not final_consensus_section_started:
                     consensus_assessment = "REACHED"
             elif "Confidence:" in line or "CONFIDENCE:" in line:
                 if "HIGH" in line.upper():
@@ -273,6 +292,137 @@ class DiscussionOrchestrator:
             "consensus_assessment": consensus_assessment,
             "confidence": confidence,
         }
+
+    def _check_main_point_consensus(self, attributed) -> bool:
+        if not attributed:
+            return False
+
+        if attributed.consensus_assessment == "REACHED":
+            return True
+
+        if attributed.consensus_assessment == "NOT REACHED":
+            agreement_analysis = attributed.agreement_analysis
+            if not agreement_analysis or agreement_analysis == "(Analysis not provided)":
+                return False
+
+            agreement_lower = agreement_analysis.lower()
+
+            full_agreement_patterns = [
+                "areas of full agreement",
+                "overwhelming consensus",
+                "unanimously agree",
+                "all participants agree",
+                "strong consensus",
+                "no disagreement",
+                "all clusters agree",
+            ]
+
+            has_full_agreement = any(pattern in agreement_lower for pattern in full_agreement_patterns)
+
+            if has_full_agreement:
+                return True
+
+            main_point_patterns = [
+                "main answer",
+                "peripheral",
+            ]
+
+            has_main_point_mention = any(pattern in agreement_lower for pattern in main_point_patterns)
+
+            if has_main_point_mention and has_full_agreement:
+                return True
+
+            if "consensus" in agreement_lower and "not reached" not in agreement_lower:
+                return True
+
+        return False
+
+    def _calculate_agreement_percentage(self, sim_matrix: np.ndarray, threshold: float) -> float:
+        if sim_matrix is None or sim_matrix.size == 0:
+            return 0.0
+
+        n = sim_matrix.shape[0]
+        total_pairs = n * (n - 1) // 2
+        if total_pairs == 0:
+            return 0.0
+
+        above_threshold = 0
+        for i in range(n):
+            for j in range(i + 1, n):
+                if sim_matrix[i, j] >= threshold:
+                    above_threshold += 1
+
+        return (above_threshold / total_pairs) * 100
+
+    async def _reprompt_for_consensus(
+        self,
+        round_num: int,
+        attributed,
+        similarity_matrix: np.ndarray,
+        model_names: list[str],
+    ) -> str:
+        threshold = self.config.discussion.consensus_threshold
+        agreement_pct = self._calculate_agreement_percentage(similarity_matrix, threshold)
+
+        reprompt = f"""The similarity matrix shows {agreement_pct:.1f}% of pairwise similarities exceed the {threshold} threshold, indicating strong agreement among participants.
+
+Your previous assessment was: {attributed.consensus_assessment}
+
+Based on this quantitative evidence, do you:
+1. Keep your original assessment, OR
+2. Change your assessment to REACHED (if the main answer is agreed upon despite peripheral disagreements)
+
+Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REACHED" and a brief justification."""
+
+        response = await self.ollama.generate(
+            model=self.config.moderator.name,
+            prompt=reprompt,
+            system="You are reconsidering a consensus assessment based on new evidence.",
+            temperature=0.3,
+            max_tokens=200,
+            num_ctx=self.config.moderator.num_ctx,
+        )
+
+        response_text = response.response.upper()
+
+        if "CHANGE" in response_text and "REACHED" in response_text:
+            print(f"[Round {round_num}] Reprompt: Moderator changed to REACHED based on similarity evidence")
+            return "REACHED"
+        else:
+            print(f"[Round {round_num}] Reprompt: Moderator kept original assessment")
+            return attributed.consensus_assessment
+
+            agreement_lower = agreement_analysis.lower()
+
+            full_agreement_patterns = [
+                "areas of full agreement",
+                "overwhelming consensus",
+                "unanimously agree",
+                "all participants agree",
+                "strong consensus",
+                "no disagreement",
+                "all clusters agree",
+            ]
+
+            has_full_agreement = any(pattern in agreement_lower for pattern in full_agreement_patterns)
+
+            if has_full_agreement:
+                return True
+
+            main_point_patterns = [
+                "main answer",
+                "peripheral",
+            ]
+
+            has_main_point_mention = any(pattern in agreement_lower for pattern in main_point_patterns)
+
+            if has_main_point_mention and has_full_agreement:
+                return True
+
+            if "consensus" in agreement_lower and "not reached" not in agreement_lower:
+                return True
+
+        return False
 
     async def _check_consensus(
         self, round_num: int, return_matrix: bool = False
@@ -514,9 +664,25 @@ class DiscussionOrchestrator:
                     await self.session_manager.save(self.session)
 
                 if self.config.consensus.mode == "moderator_decides":
-                    consensus_reached = (
-                        attributed.consensus_assessment == "REACHED" if attributed else False
-                    )
+                    if self.config.consensus.strictness == "main_point":
+                        consensus_reached = self._check_main_point_consensus(attributed)
+
+                        if not consensus_reached and attributed and sim_matrix is not None:
+                            threshold = self.config.discussion.consensus_threshold
+                            agreement_pct = self._calculate_agreement_percentage(sim_matrix, threshold)
+
+                            if agreement_pct >= 70:
+                                print(f"[Round {round_num}] High agreement ({agreement_pct:.1f}%) but moderator said NOT REACHED. Reprompting...")
+                                revised = await self._reprompt_for_consensus(
+                                    round_num, attributed, sim_matrix, sim_names
+                                )
+                                if revised == "REACHED":
+                                    consensus_reached = True
+                                    attributed.consensus_assessment = "REACHED"
+                    else:
+                        consensus_reached = (
+                            attributed.consensus_assessment == "REACHED" if attributed else False
+                        )
                 else:
                     consensus_result = await self._check_consensus(round_num)
                     self.state.consensus_result = consensus_result

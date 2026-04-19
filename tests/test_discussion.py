@@ -1,6 +1,6 @@
 import pytest
 from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
-from core.discussion import DiscussionState
+from core.discussion import DiscussionOrchestrator, DiscussionState
 from storage.session import Session, Response
 
 
@@ -81,3 +81,124 @@ class TestSessionMethods:
 
         attributed = session.get_attributed_summary(1)
         assert attributed.consensus_assessment == "REACHED"
+
+
+class TestParseAttributedSummary:
+    def test_final_consensus_not_reached(self):
+        text = """## Individual Summaries
+### Model1
+- Point 1
+
+**Consensus Assessment:** REACHED (Confidence: HIGH)
+
+## Final Consensus
+Consensus: NOT REACHED
+Confidence: HIGH
+Justification: Some disagreement"""
+
+        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        assert result["consensus_assessment"] == "NOT REACHED"
+
+    def test_final_consensus_reached(self):
+        text = """## Individual Summaries
+### Model1
+- Point 1
+
+## Final Consensus
+Consensus: REACHED
+Confidence: HIGH"""
+
+        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        assert result["consensus_assessment"] == "REACHED"
+
+    def test_no_final_consensus_uses_earlier_reached(self):
+        text = """## Individual Summaries
+### Model1
+- Point 1
+
+**Consensus Assessment:** REACHED (Confidence: HIGH)"""
+
+        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        assert result["consensus_assessment"] == "REACHED"
+
+    def test_no_consensus_at_all(self):
+        text = """## Individual Summaries
+### Model1
+- Point 1"""
+
+        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        assert result["consensus_assessment"] == "NOT REACHED"
+
+
+class TestMainPointConsensus:
+    def test_main_point_consensus_with_full_agreement(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="**Areas of Full Agreement:** All participants agree on the main point.",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is True
+
+    def test_main_point_consensus_with_overwhelming_consensus(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="There is overwhelming consensus among all participants.",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is True
+
+    def test_main_point_consensus_falls_back_when_no_analysis(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="",
+            consensus_assessment="REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is True
+
+    def test_main_point_consensus_with_disagreement(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="No agreement yet. Models disagree on the main point.",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is False
