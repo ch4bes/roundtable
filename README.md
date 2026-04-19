@@ -26,6 +26,12 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 ```bash
 # Clone the repository
 cd roundtable
+
+# Run tests
+pytest
+
+# Launch TUI
+roundtable
 ```
 
 ## Configuration
@@ -74,7 +80,10 @@ roundtable
 roundtable --prompt "What is the meaning of life?"
 
 # Start from file
-roundtable --prompt-file discussion.txt
+roundtable -f discussion.txt
+
+# Force TUI mode
+roundtable --tui
 
 # Check Ollama connection
 roundtable --check-ollama
@@ -83,7 +92,10 @@ roundtable --check-ollama
 roundtable --list-sessions
 
 # Export a session
-roundtable --export SESSION_ID --format md
+roundtable --export SESSION_ID --export-format md
+
+# Use custom config
+roundtable -c /path/to/config.json
 ```
 
 ### TUI Controls
@@ -115,12 +127,13 @@ roundtable --export SESSION_ID --format md
 
 ```
 roundtable/
-├── core/           # Core logic (discussion, similarity, consensus)
+├── core/           # Core logic (discussion, similarity, consensus, config)
 ├── tui/            # Terminal UI components
 ├── storage/        # Session management and export
 ├── prompts/        # Prompt templates
+├── scripts/        # Utility scripts (auto_config, update_config)
 ├── sessions/       # Saved discussions
-└── tests/          # Test suite
+└── tests/          # Test suite (153 tests)
 ```
 
 ## Examples
@@ -161,6 +174,43 @@ ollama pull [model]
 - Lower `consensus_threshold` in config (e.g., 0.75)
 - Increase `max_rounds` for more discussion time
 - Use more similar models (e.g., different versions of Qwen)
+
+## Advanced Configuration
+
+### Context Modes
+
+Configure how much history is included in each model's context:
+
+```json
+"context_mode": "full"        // All responses and summaries
+"context_mode": "last_summaries"  // Only recent summaries
+"context_mode": "last_round"  // Only current round
+"context_mode": "compact"     // Compressed summary
+```
+
+### Rotation Strategies
+
+Control the order models respond each round:
+
+```json
+"rotation_strategy": "sequential"  // Rotate in list order
+"rotation_strategy": "random"      // Random shuffle each round
+"rotation_strategy": "fixed"       // Always same order
+```
+
+### Human Participation
+
+In TUI mode, press `H` during a discussion to add a human response to the round. Humans can participate in consensus detection.
+
+## Testing
+
+Run the test suite:
+
+```bash
+pytest
+```
+
+153 tests covering core modules, prompts, session management, export, and more.
 
 ## License
 
