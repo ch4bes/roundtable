@@ -362,7 +362,7 @@ class DiscussionOrchestrator:
         if self.progress_callback:
             await self.progress_callback(self.state)
 
-    async def run() -> Session:
+    async def run(self) -> Session:
         self.state.is_running = True
 
         try:
