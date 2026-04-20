@@ -653,6 +653,9 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 sim_matrix = np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
                 sim_names = raw_consensus.details.get("model_names", [])
 
+                if sim_matrix is not None:
+                    self.session.add_similarity_matrix(round_num, sim_matrix.tolist(), sim_names)
+
                 summary = await self._generate_summary(
                     round_num, similarity_matrix=sim_matrix, model_names=sim_names
                 )

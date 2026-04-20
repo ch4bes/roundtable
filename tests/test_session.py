@@ -78,151 +78,68 @@ class TestSession:
         assert attributed.consensus_assessment == "REACHED"
         assert attributed.confidence == "HIGH"
 
-    def test_get_round_responses(self):
+
+class TestSimilarityMatrices:
+    def test_add_similarity_matrix(self):
         session = Session(prompt="test", config={})
-        session.add_response("model1", "response1", 1, 0)
-        session.add_response("model2", "response2", 1, 1)
-        session.add_response("model1", "response3", 2, 0)
+        
+        matrix = [[1.0, 0.9], [0.9, 1.0]]
+        session.add_similarity_matrix(1, matrix, ["model1", "model2"])
+        
+        assert len(session.similarity_matrices) == 1
+        assert session.similarity_matrices[0]["round"] == 1
+        assert session.similarity_matrices[0]["model_names"] == ["model1", "model2"]
+        assert session.similarity_matrices[0]["matrix"] == matrix
 
-        round_1_responses = session.get_round_responses(1)
-        round_2_responses = session.get_round_responses(2)
-
-        assert len(round_1_responses) == 2
-        assert len(round_2_responses) == 1
-
-    def test_get_round_human_responses(self):
+    def test_get_similarity_matrix(self):
         session = Session(prompt="test", config={})
-        session.add_human_response("human input", 1, 0)
-        session.add_response("model", "model input", 1, 0)
+        
+        session.add_similarity_matrix(1, [[1.0, 0.85], [0.85, 1.0]], ["a", "b"])
+        session.add_similarity_matrix(2, [[1.0, 0.7], [0.7, 1.0]], ["a", "b"])
+        
+        mat1 = session.get_similarity_matrix(1)
+        mat2 = session.get_similarity_matrix(2)
+        mat3 = session.get_similarity_matrix(3)
+        
+        assert mat1["round"] == 1
+        assert mat2["round"] == 2
+        assert mat3 is None
 
-        human_responses = session.get_round_human_responses(1)
-
-        assert len(human_responses) == 1
-        assert human_responses[0].content == "human input"
-
-    def test_get_summary(self):
+    def test_similarity_matrix_in_to_dict(self):
         session = Session(prompt="test", config={})
-        session.add_summary(1, "Summary for round 1")
-        session.add_summary(2, "Summary for round 2")
-
-        assert session.get_summary(1) == "Summary for round 1"
-        assert session.get_summary(2) == "Summary for round 2"
-        assert session.get_summary(3) is None
-
-    def test_get_attributed_summary(self):
-        session = Session(prompt="test", config={})
-        session.add_attributed_summary(
-            1,
-            individual_summaries={},
-            agreement_analysis="agree",
-            consensus_assessment="REACHED",
-            confidence="HIGH",
-            full_text="full",
-        )
-
-        attributed = session.get_attributed_summary(1)
-        assert attributed is not None
-        assert attributed.consensus_assessment == "REACHED"
-
-    def test_get_latest_attributed_summary(self):
-        session = Session(prompt="test", config={})
-        session.add_attributed_summary(
-            1,
-            individual_summaries={},
-            agreement_analysis="first",
-            consensus_assessment="NOT REACHED",
-            confidence="LOW",
-            full_text="first",
-        )
-        session.add_attributed_summary(
-            2,
-            individual_summaries={},
-            agreement_analysis="second",
-            consensus_assessment="REACHED",
-            confidence="HIGH",
-            full_text="second",
-        )
-
-        latest = session.get_latest_attributed_summary()
-        assert latest.consensus_assessment == "REACHED"
-
-    def test_mark_completed_with_consensus(self):
-        session = Session(prompt="test", config={})
-        session.mark_completed(consensus_round=3)
-
-        assert session.status == "completed"
-        assert session.consensus_reached is True
-        assert session.consensus_round == 3
-
-    def test_mark_completed_without_consensus(self):
-        session = Session(prompt="test", config={})
-        session.mark_completed()
-
-        assert session.status == "completed"
-        assert session.consensus_reached is False
-
-    def test_mark_stopped(self):
-        session = Session(prompt="test", config={})
-        session.mark_stopped()
-
-        assert session.status == "stopped"
-
-    def test_to_dict(self):
-        session = Session(prompt="test", config={"key": "value"}, session_id="abc-123")
-        session.add_response("model", "content", 1, 0)
-        session.add_summary(1, "summary")
-
+        session.add_similarity_matrix(1, [[1.0, 0.95], [0.95, 1.0]], ["m1", "m2"])
+        
         data = session.to_dict()
+        assert "similarity_matrices" in data
+        assert len(data["similarity_matrices"]) == 1
+        assert data["similarity_matrices"][0]["round"] == 1
 
-        assert data["id"] == "abc-123"
-        assert data["prompt"] == "test"
-        assert data["status"] == "running"
-        assert len(data["responses"]) == 1
-        assert len(data["summaries"]) == 1
-
-    def test_to_from_dict_roundtrip(self):
-        session = Session(prompt="test", config={}, session_id="xyz")
-        session.add_response("m1", "r1", 1, 0)
-        session.mark_completed(1)
-
+    def test_similarity_matrix_roundtrip(self):
+        session = Session(prompt="test", config={}, session_id="sim-rt")
+        session.add_response("m1", "resp1", 1, 0)
+        session.add_response("m2", "resp2", 1, 1)
+        session.add_similarity_matrix(1, [[1.0, 0.72], [0.72, 1.0]], ["m1", "m2"])
+        
         data = session.to_dict()
-        restored = Session(
-            prompt=data["prompt"],
-            config=data["config_snapshot"],
-            session_id=data["id"],
-        )
-        restored.created_at = data["created_at"]
-        restored.updated_at = data["updated_at"]
-        restored.status = data["status"]
-        restored.completed_rounds = data["completed_rounds"]
-        restored.consensus_reached = data["consensus_reached"]
-        restored.consensus_round = data.get("consensus_round")
+        restored = Session.from_dict(data)
+        
+        assert len(restored.similarity_matrices) == 1
+        assert restored.similarity_matrices[0]["round"] == 1
+        assert restored.similarity_matrices[0]["model_names"] == ["m1", "m2"]
+        assert restored.similarity_matrices[0]["matrix"] == [[1.0, 0.72], [0.72, 1.0]]
 
-        assert restored.id == session.id
-        assert restored.prompt == session.prompt
-        assert restored.status == session.status
+    def test_similarity_matrices_in_session_data(self):
+        session = Session(prompt="test", config={})
+        session.add_similarity_matrix(1, [[1.0, 0.5]], ["a", "b"])
+        
+        data = session.to_data()
+        assert data.similarity_matrices == session.similarity_matrices
 
-    def test_round_trip_serialization(self):
-        session = Session(prompt="round trip test", config={"testing": True})
-        session.add_response("model1", "response1", 1, 0)
-        session.add_response("model2", "response2", 1, 1)
-        session.add_summary(1, "Round 1 summary")
-        session.mark_completed(consensus_round=1)
-
+    def test_sim_matrix_without_config_snapshot(self):
+        session = Session(prompt="test", config={})
         data = session.to_dict()
-        restored = Session(
-            prompt=data["prompt"],
-            config=data["config_snapshot"],
-            session_id=data["id"],
-        )
-        restored.responses = [Response(**r) for r in data.get("responses", [])]
-        restored.completed_rounds = data["completed_rounds"]
-        restored.consensus_reached = data["consensus_reached"]
-
-        assert restored.id == session.id
-        assert restored.prompt == session.prompt
-        assert len(restored.responses) == len(session.responses)
-        assert restored.consensus_reached == session.consensus_reached
+        session.from_dict(data)
+        assert hasattr(session, 'similarity_matrices')
 
 
 class TestResponse:

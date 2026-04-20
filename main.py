@@ -216,6 +216,28 @@ async def run_cli_discussion(config: Config, prompt: str):
             print(response.content)
             print("-" * 40)
 
+        if result_session.similarity_matrices:
+            print("\n=== SIMILARITY MATRICES ===")
+            for matrix_entry in result_session.similarity_matrices:
+                round_num = matrix_entry["round"]
+                model_names = matrix_entry["model_names"]
+                matrix = matrix_entry["matrix"]
+                print(f"\n--- Round {round_num} ---")
+                table = Exporter._format_matrix_table(model_names, matrix)
+                print(table)
+                
+                threshold = config.discussion.consensus_threshold
+                n = len(model_names)
+                agreeing_pairs = sum(
+                    1 for i in range(n) for j in range(i + 1, n) if matrix[i][j] >= threshold
+                )
+                total_pairs = n * (n - 1) // 2 if n > 1 else 0
+                agreement_pct = (agreeing_pairs / total_pairs * 100) if total_pairs > 0 else 0
+                print(f"\nAgreement: {agreeing_pairs}/{total_pairs} pairs above {threshold} threshold ({agreement_pct:.1f}%)")
+            print()
+        print()
+        print()
+
         export_path = (
             Path(config.storage.sessions_dir)
             / f"discussion_{session.id[:8]}.{config.storage.export_format}"

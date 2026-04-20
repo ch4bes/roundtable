@@ -127,3 +127,111 @@ class TestExportEdgeCases:
         session = Session(prompt=special, config={})
 
         assert session.prompt == special
+
+
+class TestMatrixExportFormatting:
+    def test_format_matrix_md_table(self):
+        model_names = ["gpt4", "claude"]
+        matrix = [[1.0, 0.72], [0.72, 1.0]]
+        
+        result = Exporter._format_matrix_md_table(model_names, matrix)
+        
+        assert "|" in result
+        assert "gpt4" in result
+        assert "claude" in result
+        assert "0.72" in result
+
+    def test_format_matrix_md_table_single_model(self):
+        result = Exporter._format_matrix_md_table(["only_one"], [[1.0]])
+        
+        assert "only_one" in result
+        assert "-" in result
+
+    def test_format_matrix_md_table_empty(self):
+        result = Exporter._format_matrix_md_table([], [])
+        
+        assert result == ""
+
+    def test_format_matrix_table_basic(self):
+        model_names = ["a-model", "b-model"]
+        matrix = [[1.0, 0.5], [0.5, 1.0]]
+        
+        result = Exporter._format_matrix_table(model_names, matrix)
+        
+        assert "a-model" in result
+        assert "b-model" in result
+        assert "0.50" in result
+
+    def test_format_matrix_table_empty(self):
+        result = Exporter._format_matrix_table([], [])
+        
+        assert result == ""
+
+    def test_markdown_export_includes_similarity_matrix(self):
+        import asyncio
+        import tempfile
+        
+        session = Session(prompt="test question?", config={})
+        session.add_response("gpt4", "Answer A", 1, 0)
+        session.add_response("claude", "Answer A", 1, 1)
+        session.add_similarity_matrix(1, [[1.0, 0.95], [0.95, 1.0]], ["gpt4", "claude"])
+        session.add_summary(1, "Summary")
+        session.mark_completed(1)
+        
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            output_path = f.name
+        
+        asyncio.run(Exporter.export_markdown(session, output_path))
+        
+        with open(output_path) as f:
+            content = f.read()
+        
+        assert "Similarity Matrix" in content
+        assert "0.95" in content
+        assert "Agreement" in content
+        assert "1.00" in content
+
+    def test_markdown_export_no_similarity_matrix_when_absent(self):
+        import asyncio
+        import tempfile
+        
+        session = Session(prompt="test question?", config={})
+        session.add_response("gpt4", "Answer A", 1, 0)
+        session.add_response("claude", "Answer B", 1, 1)
+        session.add_summary(1, "Summary")
+        session.mark_completed(1)
+        
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            output_path = f.name
+        
+        asyncio.run(Exporter.export_markdown(session, output_path))
+        
+        with open(output_path) as f:
+            content = f.read()
+        
+        assert "Similarity Matrix" not in content
+
+    def test_json_export_includes_similarity_matrices(self):
+        import asyncio
+        import tempfile
+        import json
+        
+        session = Session(prompt="test", config={}, session_id="json-test")
+        session.add_response("gpt4", "A", 1, 0)
+        session.add_response("claude", "A", 1, 1)
+        session.add_similarity_matrix(1, [[1.0, 0.8], [0.8, 1.0]], ["gpt4", "claude"])
+        session.mark_completed(1)
+        
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            output_path = f.name
+        
+        asyncio.run(Exporter.export_json(session, output_path))
+        
+        with open(output_path) as f:
+            export_data = json.loads(f.read())
+        
+        assert "similarity_matrices" in export_data
+        assert len(export_data["similarity_matrices"]) == 1
+        assert export_data["similarity_matrices"][0]["matrix"] == [[1.0, 0.8], [0.8, 1.0]]
+        assert export_data["similarity_matrices"][0]["model_names"] == ["gpt4", "claude"]
+        assert "exported_at" in export_data

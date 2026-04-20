@@ -50,6 +50,7 @@ class SessionData:
     completed_rounds: int
     consensus_reached: bool
     consensus_round: int | None
+    similarity_matrices: list[dict]
 
 
 class Session:
@@ -72,6 +73,7 @@ class Session:
         self.completed_rounds = 0
         self.consensus_reached = False
         self.consensus_round: int | None = None
+        self.similarity_matrices: list[dict] = []
 
     def add_response(self, model: str, content: str, round_num: int, position: int, response_time_s: float | None = None) -> Response:
         response = Response(
@@ -145,6 +147,22 @@ class Session:
         self.status = "stopped"
         self.updated_at = datetime.now().isoformat()
 
+    def add_similarity_matrix(self, round_num: int, matrix: list[list[float]], model_names: list[str]):
+        matrix_entry = {
+            "round": round_num,
+            "matrix": matrix,
+            "model_names": model_names,
+            "timestamp": datetime.now().isoformat(),
+        }
+        self.similarity_matrices.append(matrix_entry)
+        self.updated_at = datetime.now().isoformat()
+
+    def get_similarity_matrix(self, round_num: int) -> dict | None:
+        for m in self.similarity_matrices:
+            if m["round"] == round_num:
+                return m
+        return None
+
     def get_round_responses(self, round_num: int) -> list[Response]:
         return [r for r in self.responses if r.round == round_num]
 
@@ -190,11 +208,12 @@ class Session:
             completed_rounds=self.completed_rounds,
             consensus_reached=self.consensus_reached,
             consensus_round=self.consensus_round,
+            similarity_matrices=self.similarity_matrices,
         )
 
     def to_dict(self) -> dict:
         data = self.to_data()
-        return {
+        result = {
             "id": data.id,
             "prompt": data.prompt,
             "config_snapshot": data.config_snapshot,
@@ -208,13 +227,15 @@ class Session:
             "completed_rounds": data.completed_rounds,
             "consensus_reached": data.consensus_reached,
             "consensus_round": data.consensus_round,
+            "similarity_matrices": data.similarity_matrices,
         }
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> "Session":
         session = cls(
             prompt=data["prompt"],
-            config_snapshot=data["config_snapshot"],
+            config=data.get("config_snapshot"),
             session_id=data["id"],
         )
         session.created_at = data["created_at"]
@@ -229,6 +250,7 @@ class Session:
         session.completed_rounds = data.get("completed_rounds", 0)
         session.consensus_reached = data.get("consensus_reached", False)
         session.consensus_round = data.get("consensus_round")
+        session.similarity_matrices = data.get("similarity_matrices", [])
         return session
 
 

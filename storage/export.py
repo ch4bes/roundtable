@@ -7,6 +7,72 @@ import aiofiles
 
 class Exporter:
     @staticmethod
+    def _format_matrix_table(model_names, matrix):
+        n = len(model_names)
+        if n == 0:
+            return ""
+        
+        # Compute each data column's width
+        col_widths = [len(model_names[j]) for j in range(n)]
+        
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    val = f"{matrix[i][j]:.2f}"
+                    if len(val) > col_widths[j]:
+                        col_widths[j] = len(val)
+        
+        # Row label width = col 0's width (covers labels + first col data)
+        row_width = col_widths[0]
+        
+        # Header: empty row_label cell + data columns
+        # Use col_widths[0] as the empty label cell width (same as row labels)
+        parts = [" " * row_width]
+        for j in range(n):
+            parts.append(model_names[j].rjust(col_widths[j]))
+        lines = ["  ".join(parts)]
+        
+        # Separator row: spaces matching header's empty label + dashes for data cols
+        sep_parts = [" " * row_width]
+        for j in range(n):
+            sep_parts.append("-" * col_widths[j])
+        lines.append("  ".join(sep_parts))
+        
+        # Data rows
+        for i in range(n):
+            row_parts = [model_names[i].rjust(row_width)]
+            for j in range(n):
+                if i == j:
+                    row_parts.append(" " * col_widths[j])
+                else:
+                    row_parts.append(f"{matrix[i][j]:>{col_widths[j]}.2f}")
+            lines.append("  ".join(row_parts))
+        
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_matrix_md_table(model_names, matrix):
+        n = len(model_names)
+        if n == 0:
+            return ""
+        
+        header = "| Model |" + " | ".join(name for name in model_names) + " |"
+        separator = (
+            "| --- |"
+            + "".join(" | " + "-" * len(name) for name in model_names)
+            + " |"
+        )
+        
+        rows = []
+        for i in range(n):
+            cells = [f" **{model_names[i]}** "]
+            for j in range(n):
+                cells.append(f" {matrix[i][j]:.2f} ")
+            rows.append("| " + " | ".join(cells) + "|")
+        
+        return header + "\n" + separator + "\n" + "\n".join(rows)
+
+    @staticmethod
     async def export_markdown(session: Session, output_path: str | Path) -> Path:
         output_path = Path(output_path)
 
@@ -67,6 +133,24 @@ class Exporter:
                 lines.append("### Summary")
                 lines.append("")
                 lines.append(round_summary.summary)
+                lines.append("")
+
+            sim = session.get_similarity_matrix(round_num)
+            if sim:
+                lines.append("### Similarity Matrix")
+                lines.append("")
+                table = Exporter._format_matrix_md_table(sim["model_names"], sim["matrix"])
+                lines.append(table)
+                n = len(sim["model_names"])
+                matrix = sim["matrix"]
+                threshold = session.config_snapshot.get("discussion", {}).get("consensus_threshold", 0.75)
+                agreeing_pairs = sum(
+                    1 for i in range(n) for j in range(i + 1, n) if matrix[i][j] >= threshold
+                )
+                total_pairs = n * (n - 1) // 2 if n > 1 else 0
+                agreement_pct = (agreeing_pairs / total_pairs * 100) if total_pairs > 0 else 0
+                lines.append("")
+                lines.append(f"**Agreement:** {agreeing_pairs}/{total_pairs} pairs above {threshold} ({agreement_pct:.1f}%)")
                 lines.append("")
 
             lines.append("---")

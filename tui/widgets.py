@@ -80,6 +80,19 @@ class SimilarityMatrix(Static):
         self._model_names = model_names
         self._update_display()
 
+    def load_from_session(self, session, round_num: int) -> bool:
+        sim = None
+        try:
+            sim = session.get_similarity_matrix(round_num)
+        except Exception:
+            return False
+        if sim is None:
+            return False
+        self._model_names = sim["model_names"]
+        self._matrix = np.array(sim["matrix"])
+        self._update_display()
+        return True
+
     def _update_display(self) -> None:
         if self._matrix is None:
             return
