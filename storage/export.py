@@ -42,6 +42,9 @@ class Exporter:
             for resp in round_responses:
                 lines.append(f"### {resp.model}")
                 lines.append("")
+                if resp.response_time_s is not None:
+                    lines.append(f"*Response time: {resp.response_time_s:.2f}s*")
+                    lines.append("")
                 lines.append(resp.content)
                 lines.append("")
 

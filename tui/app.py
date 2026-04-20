@@ -142,6 +142,7 @@ class RoundtableApp(App):
                 model=response.model,
                 content=response.content,
                 round_num=response.round,
+                response_time_s=response.response_time_s,
             )
 
         for summary in self.session.summaries:

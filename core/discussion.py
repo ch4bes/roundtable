@@ -557,7 +557,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
                     print(f"[Round {round_num}] {model_name} responding...")
 
-                    response_text = await self.ollama.generate(
+                    generated = await self.ollama.generate(
                         model=model_name,
                         prompt=context,
                         system=ParticipantPrompt.system(),
@@ -565,10 +565,17 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         max_tokens=model_config_obj.max_tokens,
                         num_ctx=model_config_obj.num_ctx,
                     )
+                    response_text = generated
+
+                    response_time_s = None
+                    if hasattr(generated, 'total_duration') and generated.total_duration is not None:
+                        response_time_s = round(generated.total_duration / 1_000_000_000, 2)
 
                     print(
-                        f"[Round {round_num}] {model_name} completed ({len(response_text.response)} chars)"
+                        f"[Round {round_num}] {model_name} completed ({len(response_text.response)} chars, {response_time_s}s)"
                     )
+
+                    model_response_time_s = response_time_s
 
                     response = Response(
                         model=model_name,
@@ -576,12 +583,14 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         round=round_num,
                         timestamp=datetime.now().isoformat(),
                         position=i,
+                        response_time_s=model_response_time_s,
                     )
                     self.session.add_response(
                         model=response.model,
                         content=response.content,
                         round_num=response.round,
                         position=response.position,
+                        response_time_s=model_response_time_s,
                     )
 
                     if self.config.storage.auto_save:

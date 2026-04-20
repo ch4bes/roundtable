@@ -14,6 +14,7 @@ class Response:
     round: int
     timestamp: str
     position: int
+    response_time_s: float | None = None
 
 
 @dataclass
@@ -72,13 +73,14 @@ class Session:
         self.consensus_reached = False
         self.consensus_round: int | None = None
 
-    def add_response(self, model: str, content: str, round_num: int, position: int) -> Response:
+    def add_response(self, model: str, content: str, round_num: int, position: int, response_time_s: float | None = None) -> Response:
         response = Response(
             model=model,
             content=content,
             round=round_num,
             timestamp=datetime.now().isoformat(),
             position=position,
+            response_time_s=response_time_s,
         )
         self.responses.append(response)
         self.updated_at = datetime.now().isoformat()

@@ -18,8 +18,14 @@ class TranscriptDisplay(Static):
         self._lines.clear()
         self._update_display()
 
-    def add_response(self, model: str, content: str, round_num: int) -> None:
-        self._lines.append(f"[bold]● {model} (Round {round_num})[/bold]\n{content}")
+    def add_response(self, model: str, content: str, round_num: int, response_time_s: float | None = None) -> None:
+        time_str = ""
+        if response_time_s is not None:
+            if response_time_s >= 1:
+                time_str = f" — {response_time_s:.1f}s"
+            else:
+                time_str = f" — {response_time_s*1000:.0f}ms"
+        self._lines.append(f"[bold]● {model} (Round {round_num}){time_str}[/bold]\n{content}")
         self._update_display()
 
     def add_summary(self, summary: str, round_num: int) -> None:
