@@ -153,24 +153,24 @@ def prompt_float_with_default(prompt_text: str, default: float) -> float:
         return default
 
 
-def select_moderator(models: list[dict]) -> dict:
-    """Let user select a moderator from the available models."""
-    print("\nAvailable models for moderator selection:")
-    for i, model in enumerate(models, 1):
+def select_moderator(all_models: list[dict]) -> dict:
+    """Let user select a moderator from all available Ollama models."""
+    print("\nAll available models for moderator selection:")
+    for i, model in enumerate(all_models, 1):
         size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
         print(f"  {i}. {model['name']} ({size})")
     
     while True:
-        user_input = input(f"\nWhich model should be moderator? (1-{len(models)}): ").strip()
+        user_input = input(f"\nWhich model should be moderator? (1-{len(all_models)}): ").strip()
         if user_input == "":
-            print(f"  Defaulting to: {models[0]['name']}")
-            return models[0]
+            print(f"  Defaulting to: {all_models[0]['name']}")
+            return all_models[0]
         try:
             choice = int(user_input)
-            if 1 <= choice <= len(models):
-                return models[choice - 1]
+            if 1 <= choice <= len(all_models):
+                return all_models[choice - 1]
             else:
-                print(f"  Please enter a number between 1 and {len(models)}")
+                print(f"  Please enter a number between 1 and {len(all_models)}")
         except ValueError:
             print("  Please enter a number from the list.")
 
@@ -193,7 +193,7 @@ def update_config():
 
     # Select models (manual or fallback to auto-diverse)
     selected = select_models(all_models)
-    moderator = select_moderator(selected)
+    moderator = select_moderator(all_models)
     embedding_model = has_embedding_model(all_models)
 
     print("\n" + "=" * 50)
@@ -203,6 +203,14 @@ def update_config():
         role = "Moderator" if model["name"] == moderator["name"] else "Participant"
         size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
         print(f"  {i}. {model['name']} ({size}) - {role}")
+
+    print("\n" + "=" * 50)
+    print("Moderator:")
+    print("=" * 50)
+    mod_size = f"{moderator['size_gb']:.1f} GB" if moderator["size_gb"] > 0 else "cloud"
+    print(f"  {moderator['name']} ({mod_size})")
+    if moderator not in selected:
+        print("  (Not included as a participant)")
 
     if embedding_model:
         print(f"\n✓ Embedding model found: {embedding_model}")
