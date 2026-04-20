@@ -7,7 +7,7 @@ from .config import Config
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .consensus import ConsensusDetector, ConsensusResult
-from .input_reader import AsyncInputReader, InputBuffer, get_input_buffer
+from .input_reader import InputBuffer, get_input_buffer
 from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
 from storage.session import Session, SessionManager, Response
 
@@ -151,30 +151,37 @@ class DiscussionOrchestrator:
 
         if self.config.human_participant.enabled:
             prompt_text = self.config.human_participant.prompt.format(prompt=self.session.prompt)
-            print(f"\n{'=' * 60}")
-            print(f"ROUND {round_num}: Your turn to respond")
-            print(f"{'=' * 60}")
-            print(f"Prompt: {prompt_text}")
-            print(f"\nContext from discussion:")
-            print(f"{context[:500]}..." if len(context) > 500 else f"\n{context}")
-            print(f"{'-' * 60}")
-
-            if self.input_buffer is not None:
-                async_reader = AsyncInputReader(prompt_text="\nYour response: ")
-                async_reader.start()
-
-                print("(Type your response and press Enter...)")
-                user_input = async_reader.get_input(timeout=60.0)
-
-                if user_input is not None:
+            
+            latest_summary = self.session.get_latest_attributed_summary()
+            if latest_summary and round_num > 1:
+                context_display = f"=== LATEST SUMMARY (Round {latest_summary.round}) ===\n"
+                context_display += f"AGREEMENT: {latest_summary.agreement_analysis}\n\n"
+                context_display += f"CONSENSUS: {latest_summary.consensus_assessment}\n\n"
+                context_display += "Individual points:\n"
+                for model, points in latest_summary.individual_summaries.items():
+                    context_display += f"  {model}: {points[0] if points else '(no points)'}\n"
+            else:
+                context_display = context[:500] + "..." if len(context) > 500 else context
+            
+            while True:
+                print("\n" + "=" * 60)
+                print(f"ROUND {round_num}: Your turn to respond")
+                print("=" * 60)
+                print(f"Prompt: {prompt_text}")
+                print(f"\n{context_display}")
+                print("-" * 60)
+                
+                user_input = input("\nYour response (or 's' to skip): ")
+                
+                if user_input.strip().lower() == 's':
+                    print(f"[Round {round_num}] Human skipped")
+                    return ""
+                
+                if user_input.strip():
                     print(f"[Round {round_num}] Human completed ({len(user_input)} chars)")
                     return user_input
-
-                async_reader.stop()
-                print("(No async input received, falling back to prompt)")
-
-            human_input = input("\nYour response: ")
-            return human_input
+                
+                print("\nEmpty input not accepted. Please type your response or 's' to skip.")
 
         return ""
 
@@ -531,15 +538,6 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 else:
                     total_participants = len(self.state.model_order)
 
-                # Start human input capture early (during model responses)
-                human_reader = None
-                if self.config.human_participant.enabled:
-                    human_reader = AsyncInputReader(
-                        prompt_text="\nYour response (type while models respond): "
-                    )
-                    human_reader.start()
-                    print(f"[Round {round_num}] Human can type while models respond...")
-
                 for i, model_name in enumerate(self.state.model_order):
                     if not self.state.is_running:
                         break
@@ -608,43 +606,21 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         round_num=round_num,
                     )
 
-                    if human_reader:
-                        user_input = human_reader.get_input(timeout=90.0)
-                        if user_input is None or user_input.strip() == "":
-                            print("(No input received during model response)")
-                            print(f"\n{'=' * 60}")
-                            print(f"ROUND {round_num}: Your turn to respond")
-                            print(f"{'=' * 60}")
-                            prompt_text = self.config.human_participant.prompt.format(
-                                prompt=self.session.prompt
-                            )
-                            print(f"Prompt: {prompt_text}")
-                            print(f"\nContext from discussion:")
-                            print(
-                                f"{human_context[:500]}..."
-                                if len(human_context) > 500
-                                else f"\n{human_context}"
-                            )
-                            print(f"{'-' * 60}")
-                            user_input = input("\nYour response: ")
-                        human_reader.stop()
-                    else:
-                        user_input = await self._handle_human_input(
-                            context=human_context,
-                            round_num=round_num,
-                            position=len(self.state.model_order),
-                        )
-
-                    print(f"[Round {round_num}] Human completed ({len(user_input)} chars)")
-
-                    self.session.add_human_response(
-                        content=user_input,
+                    user_input = await self._handle_human_input(
+                        context=human_context,
                         round_num=round_num,
                         position=len(self.state.model_order),
                     )
 
-                    if self.config.storage.auto_save:
-                        await self.session_manager.save(self.session)
+                    if user_input:
+                        self.session.add_human_response(
+                            content=user_input,
+                            round_num=round_num,
+                            position=len(self.state.model_order),
+                        )
+
+                        if self.config.storage.auto_save:
+                            await self.session_manager.save(self.session)
 
                 print(f"[Round {round_num}] Moderator generating summary...")
 
