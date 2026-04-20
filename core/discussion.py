@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from datetime import datetime
 from typing import Callable, Awaitable
 from dataclasses import dataclass
@@ -163,25 +164,48 @@ class DiscussionOrchestrator:
             else:
                 context_display = context[:500] + "..." if len(context) > 500 else context
             
+            paragraphs = []
+            
+            print("\n" + "=" * 60)
+            print(f"ROUND {round_num}: Your turn to respond")
+            print("=" * 60)
+            print(f"Prompt: {prompt_text}")
+            print(f"\n{context_display}")
+            print("-" * 60)
+            print("\nType your response. Press Enter after each paragraph.")
+            print("Type text and Enter to add another paragraph, or press Enter on empty line to submit.")
+            print("Type 's' at any time to skip. (Ctrl+C stops the program.)")
+            
             while True:
-                print("\n" + "=" * 60)
-                print(f"ROUND {round_num}: Your turn to respond")
-                print("=" * 60)
-                print(f"Prompt: {prompt_text}")
-                print(f"\n{context_display}")
-                print("-" * 60)
+                user_input = sys.stdin.readline()
                 
-                user_input = input("\nYour response (or 's' to skip): ")
-                
+                # Skip (before empty check so 's' works even on first line)
                 if user_input.strip().lower() == 's':
-                    print(f"[Round {round_num}] Human skipped")
+                    print(f"\n[Round {round_num}] Human skipped")
                     return ""
                 
-                if user_input.strip():
-                    print(f"[Round {round_num}] Human completed ({len(user_input)} chars)")
-                    return user_input
+                # Empty line = submit (only if we have at least one paragraph)
+                if not user_input.strip() and paragraphs:
+                    break
                 
-                print("\nEmpty input not accepted. Please type your response or 's' to skip.")
+                # Any non-empty line = next paragraph
+                if user_input.strip():
+                    paragraphs.append(user_input.rstrip('\n'))
+                    print("\n" + "-" * 40)
+                    print(f"Paragraph {len(paragraphs)} confirmed.")
+                    print("Type text and Enter for another paragraph, or press Enter to submit.\n")
+                
+                # Keep reading
+            
+            # Reassemble with blank line between paragraphs
+            response = "\n\n".join(paragraphs)
+            
+            if not response.strip():
+                print(f"[Round {round_num}] Empty input, skipping")
+                return ""
+            
+            print(f"\n[Round {round_num}] Submitted ({len(response)} chars)")
+            return response
 
         return ""
 
