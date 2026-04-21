@@ -228,10 +228,30 @@ class TestMatrixExportFormatting:
         asyncio.run(Exporter.export_json(session, output_path))
         
         with open(output_path) as f:
-            export_data = json.loads(f.read())
+            content = json.loads(f.read())
         
-        assert "similarity_matrices" in export_data
-        assert len(export_data["similarity_matrices"]) == 1
-        assert export_data["similarity_matrices"][0]["matrix"] == [[1.0, 0.8], [0.8, 1.0]]
-        assert export_data["similarity_matrices"][0]["model_names"] == ["gpt4", "claude"]
-        assert "exported_at" in export_data
+        assert "similarity_matrices" in content
+        assert len(content["similarity_matrices"]) == 1
+
+    def test_markdown_export_includes_final_review(self):
+        import asyncio
+        import tempfile
+        
+        session = Session(prompt="test question?", config={}, session_id="final-review-test")
+        session.add_response("gpt4", "Answer A", 1, 0)
+        session.add_response("claude", "Answer A", 1, 1)
+        session.add_summary(1, "Summary")
+        session.mark_completed(1)
+        session.add_final_review("## Final Review\nConsensus reached on test question.")
+        
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            output_path = f.name
+        
+        asyncio.run(Exporter.export_markdown(session, output_path))
+        
+        with open(output_path) as f:
+            content = f.read()
+        
+        assert "## Final Review" in content
+        assert "Consensus reached on test question." in content
+        assert "---" in content

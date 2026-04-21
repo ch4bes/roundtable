@@ -85,7 +85,7 @@ class DiscussionOrchestrator:
                     f"### {r.model} (Round {r.round}):\n{r.content}" for r in all_responses
                 )
                 return f"{self.session.prompt}\n\n=== DISCUSSION HISTORY ===\n{context_text}"
-            return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
+            return ParticipantPrompt.initial(self.session.prompt)
 
         elif context_mode == "summary_only":
             latest_attributed = self.session.get_latest_attributed_summary()
@@ -97,7 +97,7 @@ class DiscussionOrchestrator:
                     total_models,
                     round_num,
                 )
-            return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
+            return ParticipantPrompt.initial(self.session.prompt)
 
         elif context_mode == "summary_plus_last_n":
             n = self.config.context.last_n_responses
@@ -123,7 +123,7 @@ class DiscussionOrchestrator:
                 context = "\n\n".join(context_parts)
                 return f"{self.session.prompt}\n\n{context}\n\nYou are model {model_position} of {total_models} in round {round_num}. Consider the above and provide your updated response."
 
-            return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
+            return ParticipantPrompt.initial(self.session.prompt)
 
         return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
 
@@ -262,6 +262,33 @@ class DiscussionOrchestrator:
         )
 
         return full_text
+
+    async def _generate_final_review(self) -> str:
+        """Generate comprehensive final review after consensus is reached."""
+        print("Generating final review...")
+
+        all_responses = self.session.responses
+        all_summaries = self.session.attributed_summaries
+
+        if not all_responses:
+            return "(No responses to analyze)"
+
+        system_prompt, user_prompt = ModeratorPrompt.final_review(
+            self.session.prompt,
+            all_responses,
+            all_summaries,
+        )
+
+        response = await self.ollama.generate(
+            model=self.config.moderator.name,
+            prompt=user_prompt,
+            system=system_prompt,
+            temperature=self.config.moderator.temperature,
+            max_tokens=self.config.moderator.max_tokens,
+            num_ctx=self.config.moderator.num_ctx,
+        )
+
+        return response.response
 
     def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
         individual_summaries: dict[str, list[str]] = {}
@@ -671,6 +698,14 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 )
 
                 if consensus_reached:
+                    if self.config.discussion.final_review_enabled:
+                        try:
+                            final_review = await self._generate_final_review()
+                            self.session.add_final_review(final_review)
+                        except Exception as e:
+                            print(f"Warning: Final review generation failed: {e}")
+                            print("Continuing without final review.")
+
                     self.session.mark_completed(consensus_round=round_num)
                     await self.session_manager.save(self.session)
                     break

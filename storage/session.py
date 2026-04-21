@@ -51,6 +51,7 @@ class SessionData:
     consensus_reached: bool
     consensus_round: int | None
     similarity_matrices: list[dict]
+    final_review: str | None
 
 
 class Session:
@@ -74,6 +75,7 @@ class Session:
         self.consensus_reached = False
         self.consensus_round: int | None = None
         self.similarity_matrices: list[dict] = []
+        self.final_review: str | None = None
 
     def add_response(self, model: str, content: str, round_num: int, position: int, response_time_s: float | None = None) -> Response:
         response = Response(
@@ -163,6 +165,10 @@ class Session:
                 return m
         return None
 
+    def add_final_review(self, review_text: str):
+        self.final_review = review_text
+        self.updated_at = datetime.now().isoformat()
+
     def get_round_responses(self, round_num: int) -> list[Response]:
         return [r for r in self.responses if r.round == round_num]
 
@@ -209,6 +215,7 @@ class Session:
             consensus_reached=self.consensus_reached,
             consensus_round=self.consensus_round,
             similarity_matrices=self.similarity_matrices,
+            final_review=self.final_review,
         )
 
     def to_dict(self) -> dict:
@@ -228,6 +235,7 @@ class Session:
             "consensus_reached": data.consensus_reached,
             "consensus_round": data.consensus_round,
             "similarity_matrices": data.similarity_matrices,
+            "final_review": self.final_review,
         }
         return result
 
@@ -251,6 +259,7 @@ class Session:
         session.consensus_reached = data.get("consensus_reached", False)
         session.consensus_round = data.get("consensus_round")
         session.similarity_matrices = data.get("similarity_matrices", [])
+        session.final_review = data.get("final_review")
         return session
 
 

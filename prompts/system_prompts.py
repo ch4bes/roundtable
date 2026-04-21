@@ -139,6 +139,80 @@ ANALYSIS GUIDELINES:
 
 Follow the format. Use the similarity matrix to identify clusters and determine consensus. Place your ONLY Consensus verdict in ## Final Consensus at the end."""
 
+    @staticmethod
+    def final_review(
+        prompt: str,
+        all_responses: list,
+        all_summaries: list,
+    ) -> tuple[str, str]:
+        system = """You are writing the final review of a completed roundtable discussion.
+Your task is to provide a comprehensive analysis of the entire discussion.
+
+STRUCTURE YOUR RESPONSE:
+
+## Discussion Overview
+- Main question debated
+- Total rounds completed
+- Participants involved
+
+## Key Arguments by Position
+[Group arguments by stance, not by model - show evolution across rounds]
+
+## Points of Agreement
+- Universal consensus points
+- Majority agreement points
+
+## Points of Disagreement
+- Fundamental disagreements (prevented consensus)
+- Peripheral disagreements (different examples/evidence)
+
+## Position Evolution
+[Natural language narrative of how positions shifted]
+- Which models changed positions and when
+- What counterarguments influenced changes
+- Critical turning points in the discussion
+
+## Final Assessment
+- Consensus: REACHED/NOT REACHED
+- If reached: the agreed position statement
+- If not reached: what remains unresolved
+- Recommendation for further discussion
+
+Be comprehensive but concise. Reference specific rounds and models when relevant."""
+
+        rounds_data: dict[int, list] = {}
+        for resp in all_responses:
+            r = resp.round
+            if r not in rounds_data:
+                rounds_data[r] = []
+            rounds_data[r].append(resp)
+
+        discussion_text = ""
+        for round_num_key in sorted(rounds_data.keys()):
+            discussion_text += f"### Round {round_num_key}\n\n"
+            for resp in rounds_data[round_num_key]:
+                discussion_text += f"**{resp.model}:**\n{resp.content}\n\n"
+
+        summaries_text = ""
+        for summary in all_summaries:
+            summaries_text += (
+                f"### Round {summary.round} Analysis\n"
+                f"Consensus: {summary.consensus_assessment} (Confidence: {summary.confidence})\n"
+                f"Agreement: {summary.agreement_analysis}\n\n"
+            )
+
+        user_prompt = f"""Original Prompt: {prompt}
+
+=== FULL DISCUSSION HISTORY ===
+
+{discussion_text}
+=== ROUND SUMMARIES ===
+
+{summaries_text}
+Generate the final review following the structure above."""
+
+        return (system, user_prompt)
+
 
 @dataclass
 class ParticipantPrompt:
@@ -147,10 +221,8 @@ class ParticipantPrompt:
         return "You are a roundtable participant. Provide direct answers. Avoid greetings, hedging, and meta-commentary."
 
     @staticmethod
-    def initial(prompt: str, model_position: int, total_models: int) -> str:
-        return (
-            f"{prompt}\n\nModel {model_position}/{total_models}. Direct answer in 2-4 paragraphs."
-        )
+    def initial(prompt: str) -> str:
+        return f"{prompt}\n\nProvide your direct answer in 2-4 paragraphs."
 
     @staticmethod
     def with_summary(
@@ -181,6 +253,14 @@ AGREEMENT ANALYSIS:
 {attributed.agreement_analysis}
 
 CONSENSUS ASSESSMENT: {attributed.consensus_assessment} (Confidence: {attributed.confidence})
+
+RESPONSE OPTIONS:
+- REFINEMENT: Strengthen your previous position with new reasoning
+- REVISION: Abandon flawed arguments and adopt a more convincing position
+- REINFORCEMENT: Support consensus points while adding unique insights
+- DISAGREEMENT: Clearly state what you disagree with and justify why
+
+Be direct about which path you're taking and why.
 
 Model {model_position}/{total_models} round {round_num}.
 Consider the above analysis. If you agree with the consensus, reinforce the key points.

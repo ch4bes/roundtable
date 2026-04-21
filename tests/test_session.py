@@ -186,3 +186,54 @@ class TestAttributedSummary:
         assert len(attributed.individual_summaries) == 1
         assert attributed.consensus_assessment == "REACHED"
         assert attributed.confidence == "HIGH"
+
+
+class TestFinalReview:
+    def test_initial_final_review_none(self):
+        session = Session("test prompt", {})
+        assert session.final_review is None
+
+    def test_add_final_review_sets_value(self):
+        session = Session("test prompt", {})
+        session.add_final_review("Final review content")
+        assert session.final_review == "Final review content"
+
+    def test_final_review_in_to_dict(self):
+        session = Session("test prompt", {})
+        session.add_final_review("test review text")
+        data = session.to_dict()
+        assert "final_review" in data
+        assert data["final_review"] == "test review text"
+
+    def test_final_review_in_dataclass(self):
+        session = Session("test prompt", {})
+        session.add_final_review("test review text")
+        data = session.to_data()
+        assert data.final_review == "test review text"
+
+    def test_final_review_roundtrip(self):
+        session = Session("test prompt", {})
+        session.add_final_review("final review content")
+        data = session.to_dict()
+        restored = Session.from_dict(data)
+        assert restored.final_review == "final review content"
+
+    def test_final_review_from_dict_none(self):
+        data = {
+            "id": "test-id",
+            "prompt": "test",
+            "config_snapshot": {},
+            "created_at": "2024-01-01T00:00:00",
+            "updated_at": "2024-01-01T00:00:00",
+            "status": "running",
+            "responses": [],
+            "human_responses": [],
+            "summaries": [],
+            "attributed_summaries": [],
+            "completed_rounds": 0,
+            "consensus_reached": False,
+            "consensus_round": None,
+            "similarity_matrices": [],
+        }
+        session = Session.from_dict(data)
+        assert session.final_review is None

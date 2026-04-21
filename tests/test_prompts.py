@@ -65,14 +65,17 @@ class TestParticipantPrompt:
         assert "roundtable" in system.lower() or "participant" in system.lower()
 
     def test_initial(self):
-        prompt = ParticipantPrompt.initial(
-            "What is AI?",
-            model_position=1,
-            total_models=3,
-        )
+        prompt = ParticipantPrompt.initial("What is AI?")
 
         assert "What is AI?" in prompt
-        assert "Model 1/3" in prompt
+        assert "Model" not in prompt
+        assert "2-4 paragraphs" in prompt
+
+    def test_initial_no_model_reference(self):
+        prompt = ParticipantPrompt.initial("Tell me about cats.")
+        assert "Model" not in prompt
+        assert "participant" not in prompt
+        assert "roundtable" not in prompt.lower()
 
     def test_with_summary(self):
         prompt = ParticipantPrompt.with_summary(
@@ -112,6 +115,10 @@ class TestParticipantPrompt:
         assert "Test prompt" in prompt
         assert "Point A" in prompt or "Point B" in prompt
         assert "REACHED" in prompt
+        assert "REFINEMENT" in prompt
+        assert "REVISION" in prompt
+        assert "REINFORCEMENT" in prompt
+        assert "DISAGREEMENT" in prompt
 
     def test_with_context(self):
         context_responses = [
@@ -143,12 +150,12 @@ class TestPromptEdgeCases:
         assert "single" in prompt
 
     def test_participant_first_position(self):
-        prompt = ParticipantPrompt.initial("Question?", 1, 4)
-        assert "Model 1/4" in prompt
+        prompt = ParticipantPrompt.initial("Question?")
+        assert "2-4 paragraphs" in prompt
 
     def test_participant_last_position(self):
-        prompt = ParticipantPrompt.initial("Question?", 4, 4)
-        assert "Model 4/4" in prompt
+        prompt = ParticipantPrompt.initial("Question?")
+        assert "2-4 paragraphs" in prompt
 
     def test_attributed_summary_empty(self):
         attributed = AttributedSummary(
@@ -170,3 +177,23 @@ class TestPromptEdgeCases:
         )
 
         assert "prompt" in prompt
+
+    def test_moderator_final_review_returns_tuple(self):
+        from unittest.mock import MagicMock
+        responses = [
+            MagicMock(model="model1", content="Response 1", round=1),
+            MagicMock(model="model2", content="Response 2", round=1),
+        ]
+        summaries = [
+            MagicMock(round=1, consensus_assessment="REACHED", confidence="HIGH", agreement_analysis="Agreed"),
+        ]
+
+        system, user = ModeratorPrompt.final_review("Test question?", responses, summaries)
+
+        assert isinstance(system, str)
+        assert isinstance(user, str)
+        assert "Discussion Overview" in system
+        assert "Position Evolution" in system
+        assert "Test question?" in user
+        assert "model1" in user
+        assert "model2" in user

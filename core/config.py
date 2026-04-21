@@ -33,6 +33,7 @@ class DiscussionConfig(BaseModel):
     consensus_threshold: float = Field(default=0.75, ge=0, le=1)
     consensus_method: Literal["pairwise", "clustering"] = "clustering"
     rotation_order: Literal["sequential", "random"] = "sequential"
+    final_review_enabled: bool = True
 
 
 class ContextConfig(BaseModel):

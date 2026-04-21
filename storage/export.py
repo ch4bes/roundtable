@@ -156,6 +156,14 @@ class Exporter:
             lines.append("---")
             lines.append("")
 
+        if session.final_review:
+            lines.append("## Final Review")
+            lines.append("")
+            lines.append(session.final_review)
+            lines.append("")
+            lines.append("---")
+            lines.append("")
+
         if session.status == "running":
             lines.append("*Discussion in progress...*")
         elif session.status == "stopped":
