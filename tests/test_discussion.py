@@ -1,6 +1,6 @@
 import pytest
 from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
-from core.discussion import DiscussionOrchestrator, DiscussionState
+from core.discussion import DiscussionOrchestrator, DiscussionState, _ConsensusVerdict
 from storage.session import Session, Response
 
 
@@ -131,7 +131,7 @@ Confidence: HIGH"""
 
 
 class TestMainPointConsensus:
-    def test_main_point_consensus_with_full_agreement(self):
+    def test_full_agreement_triggers_inconsistency_when_moderator_says_not_reached(self):
         from dataclasses import dataclass
 
         @dataclass
@@ -147,9 +147,9 @@ class TestMainPointConsensus:
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
-        assert result is True
+        assert result is _ConsensusVerdict.INCONSISTENT
 
-    def test_main_point_consensus_with_overwhelming_consensus(self):
+    def test_overwhelming_consensus_returns_not_reached_without_main_answer(self):
         from dataclasses import dataclass
 
         @dataclass
@@ -165,9 +165,9 @@ class TestMainPointConsensus:
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
-        assert result is True
+        assert result is _ConsensusVerdict.NOT_REACHED
 
-    def test_main_point_consensus_falls_back_when_no_analysis(self):
+    def test_moderator_says_reached_short_circuits(self):
         from dataclasses import dataclass
 
         @dataclass
@@ -183,9 +183,9 @@ class TestMainPointConsensus:
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
-        assert result is True
+        assert result is _ConsensusVerdict.REACHED
 
-    def test_main_point_consensus_with_disagreement(self):
+    def test_disagreement_returns_not_reached(self):
         from dataclasses import dataclass
 
         @dataclass
@@ -201,4 +201,62 @@ class TestMainPointConsensus:
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
-        assert result is False
+        assert result is _ConsensusVerdict.NOT_REACHED
+
+    def test_two_of_three_agreement_does_not_trigger_inconsistency(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="**Agreement Analysis:** `gemma4:e4b` and `qwen3.5:9b` fully agree on the core thesis that best is subjective.",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is _ConsensusVerdict.NOT_REACHED
+
+    def test_all_clusters_agree_on_main_answer_triggers_inconsistency(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="Analysis: While examples differ, all clusters agree on the main answer that no single best exists.",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is _ConsensusVerdict.INCONSISTENT
+
+    def test_inconsistent_with_no_agreement_analysis(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MockAttributed:
+            agreement_analysis: str
+            consensus_assessment: str
+            confidence: str
+
+        attributed = MockAttributed(
+            agreement_analysis="",
+            consensus_assessment="NOT REACHED",
+            confidence="HIGH"
+        )
+
+        result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
+        assert result is _ConsensusVerdict.NOT_REACHED
+
+    def test_none_attributed_returns_not_reached(self):
+        result = DiscussionOrchestrator._check_main_point_consensus(None, None)
+        assert result is _ConsensusVerdict.NOT_REACHED
