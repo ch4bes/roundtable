@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
 from core.discussion import DiscussionOrchestrator, DiscussionState, _ConsensusVerdict
 from storage.session import Session, Response
@@ -260,3 +261,39 @@ class TestMainPointConsensus:
     def test_none_attributed_returns_not_reached(self):
         result = DiscussionOrchestrator._check_main_point_consensus(None, None)
         assert result is _ConsensusVerdict.NOT_REACHED
+
+
+class TestRunExceptionLogging:
+    @pytest.mark.asyncio
+    async def test_run_logs_exception_context(self, capsys):
+        """When run() raises, the error message includes the current round number."""
+        config = Config(
+            models=[
+                ModelConfig(name="model1"),
+                ModelConfig(name="model2"),
+            ],
+            discussion=DiscussionConfig(max_rounds=3),
+            context=ContextConfig(mode="summary_only"),
+        )
+        session = Session(prompt="test prompt", config={})
+
+        orchestrator = DiscussionOrchestrator(
+            config=config,
+            session=session,
+            progress_callback=AsyncMock(),
+        )
+
+        # Have generate raise on the first call (round 1, model1)
+        # This triggers the outer except handler immediately
+        async def failing_generate(*args, **kwargs):
+            raise RuntimeError("simulated failure")
+
+        orchestrator.ollama.generate = failing_generate
+        orchestrator.session_manager.save = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="simulated failure"):
+            await orchestrator.run()
+
+        captured = capsys.readouterr()
+        assert "round" in captured.err.lower()
+        assert "simulated failure" in captured.err

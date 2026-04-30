@@ -715,6 +715,14 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 await self.session_manager.save(self.session)
 
         except Exception as e:
+            print(
+                f"\n[ERROR] Discussion failed during round "
+                f"{self.state.current_round}: {e}",
+                file=sys.stderr,
+            )
+            import traceback
+
+            traceback.print_exc()
             self.session.mark_stopped()
             await self.session_manager.save(self.session)
             raise
