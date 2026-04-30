@@ -46,7 +46,7 @@ def parse_size(size_str: str) -> float:
         elif size_str == "-":
             return 0
         return float(size_str)
-    except:
+    except (ValueError, TypeError):
         return 0
 
 
@@ -79,7 +79,7 @@ def select_models(all_models: list[dict]) -> list[dict]:
                     if 1 <= idx <= len(all_models) and idx not in seen_indices:
                         selected.append(all_models[idx - 1])
                         seen_indices.add(idx)
-            except:
+            except (ValueError, IndexError):
                 pass
         else:
             # Handle single number
@@ -88,7 +88,7 @@ def select_models(all_models: list[dict]) -> list[dict]:
                 if 1 <= idx <= len(all_models) and idx not in seen_indices:
                     selected.append(all_models[idx - 1])
                     seen_indices.add(idx)
-            except:
+            except (ValueError, IndexError):
                 pass
     
     if not selected:
