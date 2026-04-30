@@ -1,5 +1,7 @@
 import pytest
+from unittest.mock import AsyncMock, patch
 from core.config import Config, ModelConfig, ContextConfig
+from core.discussion import DiscussionOrchestrator
 from storage.session import Session
 
 
@@ -65,3 +67,73 @@ class TestContextBuildEdgeCases:
 
         responses = session.get_round_responses(1)
         assert len(responses) == 2
+
+
+class TestBuildContextFallback:
+    """Tests for _build_context fallback path — ensures no TypeError on unknown modes or empty history."""
+
+    def _make_orchestrator(self, context_mode: str):
+        """Create a DiscussionOrchestrator with mocked Ollama dependencies."""
+        config = Config(
+            models=[
+                ModelConfig(name="model1"),
+                ModelConfig(name="model2"),
+            ],
+            context=ContextConfig(mode=context_mode),
+        )
+        session = Session(prompt="What is the best programming language?", config={})
+
+        with patch("core.discussion.OllamaClient") as MockOllama, \
+             patch("core.discussion.SimilarityEngine") as MockSim, \
+             patch("core.discussion.ConsensusDetector"):
+            MockOllama.return_value = AsyncMock()
+            MockSim.return_value = AsyncMock()
+            orchestrator = DiscussionOrchestrator(config, session)
+            return orchestrator, session
+
+    @pytest.mark.asyncio
+    async def test_build_context_unknown_mode_does_not_raise_type_error(self):
+        """Unknown context_mode → falls back to ParticipantPrompt.initial(prompt) without TypeError.
+
+        Regression test for issue #15: the old code called
+        ParticipantPrompt.initial(prompt, model_position, total_models) which
+        passes 3 args to a 1-arg method.
+        """
+        orchestrator, session = self._make_orchestrator("full")
+         # Mutate mode to bypass Pydantic Literal validation
+        orchestrator.config.context.mode = "unknown_mode"
+        # Should not raise TypeError
+        context = await orchestrator._build_context(
+            model_position=1, total_models=2, round_num=1
+        )
+        assert session.prompt in context
+
+    @pytest.mark.asyncio
+    async def test_build_context_summary_plus_last_n_round_1_no_history(self):
+        """summary_plus_last_n mode, round 1, no prior responses → uses ParticipantPrompt.initial."""
+        orchestrator, session = self._make_orchestrator("summary_plus_last_n")
+        context = await orchestrator._build_context(
+            model_position=1, total_models=2, round_num=1
+        )
+        assert session.prompt in context
+        assert "Provide your direct answer" in context
+
+    @pytest.mark.asyncio
+    async def test_build_context_full_mode_no_history(self):
+        """full mode with no prior responses → falls back to ParticipantPrompt.initial."""
+        orchestrator, session = self._make_orchestrator("full")
+        context = await orchestrator._build_context(
+            model_position=1, total_models=2, round_num=1
+        )
+        assert session.prompt in context
+        assert "Provide your direct answer" in context
+
+    @pytest.mark.asyncio
+    async def test_build_context_summary_only_round_1_no_summary(self):
+        """summary_only mode, round 1, no attributed summary → uses ParticipantPrompt.initial."""
+        orchestrator, session = self._make_orchestrator("summary_only")
+        context = await orchestrator._build_context(
+            model_position=1, total_models=2, round_num=1
+        )
+        assert session.prompt in context
+        assert "Provide your direct answer" in context

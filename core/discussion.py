@@ -125,7 +125,7 @@ class DiscussionOrchestrator:
 
             return ParticipantPrompt.initial(self.session.prompt)
 
-        return ParticipantPrompt.initial(self.session.prompt, model_position, total_models)
+        return ParticipantPrompt.initial(self.session.prompt)
 
     async def _generate_response(
         self,
