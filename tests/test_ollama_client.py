@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 from core.ollama_client import OllamaClient, GenerationResponse, EmbeddingResponse
 
 
@@ -160,3 +161,74 @@ class TestErrorHandling:
 
         embedding = response_data.get("embedding", [])
         assert embedding == []
+
+
+class TestStreamGenerate:
+    """Tests for _stream_generate JSON error handling (fix #1.4)."""
+
+    def _make_streaming_mock(self, lines: list[str]):
+        """Build a mock httpx.AsyncClient.stream() context manager yielding given lines."""
+        async def aiter_lines():
+            for line in lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_lines = aiter_lines
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=mock_cm)
+        return mock_client
+
+    @pytest.mark.asyncio
+    async def test_stream_generate_malformed_json_line(self):
+        """A malformed line in the stream is skipped, not crashed."""
+        client = OllamaClient()
+        mock_httpx = self._make_streaming_mock([
+            '{"response": "hello"}',
+            'this is not json',
+            '{"response": " world"}',
+        ])
+
+        result = ""
+        async for chunk in client._stream_generate(mock_httpx, {}):
+            result += chunk
+
+        assert result == "hello world"
+        assert "this is not json" not in result
+
+    @pytest.mark.asyncio
+    async def test_stream_generate_empty_object_line(self):
+        """A '{}' line in the stream is handled gracefully (no crash, no yield)."""
+        client = OllamaClient()
+        mock_httpx = self._make_streaming_mock([
+            '{"response": "hi"}',
+            '{}',
+            '{"response": " there"}',
+        ])
+
+        result = ""
+        async for chunk in client._stream_generate(mock_httpx, {}):
+            result += chunk
+
+        assert result == "hi there"
+
+    @pytest.mark.asyncio
+    async def test_stream_generate_all_malformed(self):
+        """If all lines are malformed, generator yields nothing (no crash)."""
+        client = OllamaClient()
+        mock_httpx = self._make_streaming_mock([
+            'bad1',
+            'bad2',
+            'bad3',
+        ])
+
+        result = ""
+        async for chunk in client._stream_generate(mock_httpx, {}):
+            result += chunk
+
+        assert result == ""

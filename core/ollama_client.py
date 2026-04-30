@@ -108,9 +108,14 @@ class OllamaClient:
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if line:
-                    data = json.loads(line)
-                    if chunk := data.get("response"):
-                        yield chunk
+                    try:
+                        data = json.loads(line)
+                        if chunk := data.get("response"):
+                            yield chunk
+                    except json.JSONDecodeError:
+                        # Skip malformed lines — Ollama streaming can produce
+                        # partial lines, empty objects, or server error output
+                        continue
 
     async def embeddings(self, model: str, prompt: str) -> EmbeddingResponse:
         client = await self._get_client()
