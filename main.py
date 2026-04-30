@@ -115,22 +115,24 @@ async def check_ollama(config: Config) -> bool:
         base_url=config.ollama.base_url,
         timeout=config.ollama.timeout,
     )
-    available = await client.is_available()
-    await client.close()
+    try:
+        available = await client.is_available()
 
-    if available:
-        models = await client.list_models()
-        print(f"✓ Ollama is available at {config.ollama.base_url}")
-        print(f"  Found {len(models)} models:")
-        for model in models[:10]:
-            print(f"    - {model}")
-        if len(models) > 10:
-            print(f"    ... and {len(models) - 10} more")
-    else:
-        print(f"✗ Ollama is not available at {config.ollama.base_url}")
-        print("  Make sure Ollama is running: ollama serve")
+        if available:
+            models = await client.list_models()
+            print(f"✓ Ollama is available at {config.ollama.base_url}")
+            print(f"  Found {len(models)} models:")
+            for model in models[:10]:
+                print(f"      - {model}")
+            if len(models) > 10:
+                print(f"      ... and {len(models) - 10} more")
+        else:
+            print(f"✗ Ollama is not available at {config.ollama.base_url}")
+            print("  Make sure Ollama is running: ollama serve")
 
-    return available
+        return available
+    finally:
+        await client.close()
 
 
 async def list_sessions(config: Config):
