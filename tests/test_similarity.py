@@ -1,3 +1,4 @@
+import httpx
 import pytest
 import numpy as np
 from core.similarity import SimilarityEngine
@@ -137,3 +138,91 @@ def test_text_similarity_fallback():
 
     assert sim1 == 1.0
     assert sim2 < 0.3
+
+
+# ── Fallback-on-embedding-failure tests (§1.9) ──────────────────────────
+
+class MockOllamaClientFailing:
+    """Mock client that raises on every embeddings() call."""
+
+    def __init__(self, exc: Exception):
+        self.exc = exc
+        self.call_count = 0
+
+    async def embeddings(self, model: str, prompt: str) -> EmbeddingResponse:
+        self.call_count += 1
+        raise self.exc
+
+
+@pytest.mark.asyncio
+async def test_similarity_fallback_logs_error_message(capsys):
+    """When embedding fails, the error message is logged, not silently swallowed."""
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = MockOllamaClientFailing(httpx.HTTPError("Connection refused"))
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+
+    result = await engine.calculate_similarity_matrix(
+        ["text1", "text2", "text3"], ["m1", "m2", "m3"]
+    )
+
+    assert not engine.use_embeddings  # fallback triggered
+    assert isinstance(result, type(result))
+    assert result.matrix.shape == (3, 3)
+
+    captured = capsys.readouterr()
+    assert "Connection refused" in captured.out
+    assert "falling back to text-based" in captured.out.lower()
+
+
+@pytest.mark.asyncio
+async def test_pairwise_similarity_fallback_logs_error(capsys):
+    """When pairwise embedding fails, the error is logged."""
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = MockOllamaClientFailing(httpx.HTTPError("Timeout"))
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+
+    pairs = await engine.calculate_pairwise_similarities(["text1", "text2"])
+
+    assert not engine.use_embeddings
+    captured = capsys.readouterr()
+    assert "Timeout" in captured.out
+    assert "falling back to text-based" in captured.out.lower()
+
+
+@pytest.mark.asyncio
+async def test_similarity_fallback_uses_jaccard_after_http_error():
+    """After embedding fails, Jaccard similarity is used for the matrix."""
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = MockOllamaClientFailing(httpx.HTTPError("500"))
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+
+    result = await engine.calculate_similarity_matrix(
+        ["hello world", "world hello"], ["m1", "m2"]
+    )
+
+    # Jaccard of {"hello", "world"} and {"world", "hello"} = 1.0
+    assert result.matrix[0, 1] == pytest.approx(1.0)
+
+
+@pytest.mark.asyncio
+async def test_similarity_embeddings_disabled_after_failure():
+    """use_embeddings stays False after one failure for the lifetime of the engine."""
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = MockOllamaClientFailing(httpx.HTTPError("fail"))
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+
+    await engine.calculate_similarity_matrix(["x"], ["m1"])
+    assert not engine.use_embeddings
+
+    # Subsequent calls should NOT try embeddings at all:
+    engine.ollama = MockOllamaClientFailing(httpx.HTTPError("should not be called"))
+    await engine.calculate_similarity_matrix(["y"], ["m2"])
+    assert engine.ollama.call_count == 0

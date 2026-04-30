@@ -1,3 +1,4 @@
+import httpx
 import numpy as np
 from typing import List
 from dataclasses import dataclass
@@ -73,8 +74,8 @@ class SimilarityEngine:
                             matrix[j, i] = sim
 
                 return SimilarityResult(matrix=matrix, model_names=model_names)
-            except Exception:
-                print("Warning: Embedding generation failed, falling back to text-based similarity")
+            except (httpx.HTTPError, RuntimeError) as e:
+                print(f"Warning: Embedding generation failed ({e}), falling back to text-based similarity")
                 self.use_embeddings = False
 
         return await self._calculate_text_similarity_matrix(texts, model_names)
@@ -129,7 +130,8 @@ class SimilarityEngine:
                         pairs.append((i, j, sim))
 
                 return pairs
-            except Exception:
+            except (httpx.HTTPError, RuntimeError) as e:
+                print(f"Warning: Pairwise embedding failed ({e}), falling back to text-based similarity")
                 self.use_embeddings = False
 
         pairs = []
