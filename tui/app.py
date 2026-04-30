@@ -18,6 +18,7 @@ from rich.text import Text
 from rich.panel import Panel
 from rich.markdown import Markdown
 import asyncio
+import sys
 
 from core import Config, DiscussionOrchestrator, OllamaClient
 from core.discussion import DiscussionState
@@ -157,7 +158,10 @@ class RoundtableApp(App):
 
         similarity_matrix = self.query_one("#similarity-matrix", SimilarityMatrix)
         if state.consensus_result and hasattr(state.consensus_result, "details"):
-            await similarity_matrix.update_from_orchestrator(self.orchestrator, state.current_round)
+            try:
+                await similarity_matrix.update_from_orchestrator(self.orchestrator, state.current_round)
+            except Exception as e:
+                print(f"Warning: Failed to update similarity matrix: {e}", file=sys.stderr)
 
         transcript = self.query_one("#transcript", TranscriptDisplay)
         transcript.scroll_end()
@@ -261,12 +265,14 @@ class RoundtableApp(App):
 
     def action_save_session(self) -> None:
         if self.session and self.session_manager:
+            manager = self.session_manager
+            session = self.session
 
-            async def save():
-                path = await self.session_manager.save(self.session)
+            async def _do_save():
+                path = await manager.save(session)
                 self.notify(f"Saved to {path}")
 
-            asyncio.create_task(save())
+            self._safe_create_task(_do_save(), "Session saved", "Save failed")
         else:
             self.notify("No active session to save", severity="warning")
 
