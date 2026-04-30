@@ -92,18 +92,21 @@ class SessionListScreen(ModalScreen):
         import asyncio
 
         async def load():
-            sessions = await self._load_sessions_fn()
-            for session in sessions:
-                table.add_row(
-                    session["id"][:36],
-                    session["prompt"][:58] + "..."
-                    if len(session["prompt"]) > 60
-                    else session["prompt"],
-                    session["status"],
-                    str(session.get("completed_rounds", 0)),
-                    session["created_at"][:19],
-                    key=session["id"],
-                )
+            try:
+                sessions = await self._load_sessions_fn()
+                for session in sessions:
+                    table.add_row(
+                        session["id"][:36],
+                        session["prompt"][:58] + "..."
+                        if len(session["prompt"]) > 60
+                        else session["prompt"],
+                        session["status"],
+                        str(session.get("completed_rounds", 0)),
+                        session["created_at"][:19],
+                        key=session["id"],
+                  )
+            except Exception as e:
+                self.notify(f"Failed to load sessions: {e}", severity="error")
 
         asyncio.create_task(load())
 
@@ -114,7 +117,12 @@ class SessionListScreen(ModalScreen):
             if table.cursor_row is not None:
                 row_key = table.get_row_at(table.cursor_row).key
                 if row_key:
-                    asyncio.create_task(self._on_select_fn(row_key))
+                    async def _safe_select():
+                        try:
+                            await self._on_select_fn(row_key)
+                        except Exception as e:
+                            self.notify(f"Failed to load session: {e}", severity="error")
+                    asyncio.create_task(_safe_select())
                     self.app.pop_screen()
         elif event.button.id == "delete":
             self.notify("Delete not implemented", severity="warning")
@@ -148,20 +156,23 @@ class ExportScreen(ModalScreen):
             from pathlib import Path
 
             async def do_export():
-                from storage import Exporter
+                try:
+                    from storage import Exporter
 
-                filename = f"discussion_{self.session.id[:8]}.{format}"
-                path = (
-                    Path(
-                        self.session.config_snapshot.get("storage", {}).get(
-                            "sessions_dir", "./sessions"
-                        )
-                    )
-                    / filename
-                )
-                await Exporter.export(self.session, path, format)
-                self.notify(f"Exported to {path}", severity="information")
-                self.app.pop_screen()
+                    filename = f"discussion_{self.session.id[:8]}.{format}"
+                    path = (
+                        Path(
+                            self.session.config_snapshot.get("storage", {}).get(
+                              "sessions_dir", "./sessions"
+                          )
+                      )
+                      / filename
+                  )
+                    await Exporter.export(self.session, path, format)
+                    self.notify(f"Exported to {path}", severity="information")
+                    self.app.pop_screen()
+                except Exception as e:
+                    self.notify(f"Export failed: {e}", severity="error")
 
             asyncio.create_task(do_export())
         elif event.button.id == "cancel":

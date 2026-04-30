@@ -59,6 +59,7 @@ class RoundtableApp(App):
         self.model_names: list[str] = []
         self.discussion_running = False
         self.discussion_paused = False
+        self._tasks: set[asyncio.Task] = set()
         super().__init__()
 
     def compose(self) -> ComposeResult:
@@ -202,25 +203,61 @@ class RoundtableApp(App):
             return
         self._show_prompt_screen()
 
+    def _safe_create_task(
+        self,
+        coro,
+        on_success: str,
+        on_error_prefix: str = "Error",
+    ) -> asyncio.Task:
+        """Create a fire-and-forget task with error handling and tracking."""
+        app = self
+
+        async def _wrapper():
+            try:
+                await coro
+                if app.is_running:
+                    app.notify(on_success)
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                if app.is_running:
+                    app.notify(f"{on_error_prefix}: {e}", severity="error")
+            finally:
+                app._tasks.discard(_task)
+
+        _task = asyncio.create_task(_wrapper())
+        self._tasks.add(_task)
+        return _task
+
+    def on_exit(self) -> None:
+        """Cancel any pending fire-and-forget tasks on app shutdown."""
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+        self._tasks.clear()
+
     def action_toggle_pause(self) -> None:
         if not self.discussion_running:
             return
 
         if self.orchestrator:
             if self.discussion_paused:
-                asyncio.create_task(self.orchestrator.resume())
-                self.notify("Discussion resumed")
+                self._safe_create_task(
+                    self.orchestrator.resume(), "Discussion resumed", "Resume failed"
+                )
             else:
-                asyncio.create_task(self.orchestrator.pause())
-                self.notify("Discussion paused")
+                self._safe_create_task(
+                    self.orchestrator.pause(), "Discussion paused", "Pause failed"
+                )
 
     def action_stop_discussion(self) -> None:
         if not self.discussion_running:
             return
 
         if self.orchestrator:
-            asyncio.create_task(self.orchestrator.stop())
-            self.notify("Stopping discussion...")
+            self._safe_create_task(
+                self.orchestrator.stop(), "Discussion stopped", "Stop failed"
+            )
 
     def action_save_session(self) -> None:
         if self.session and self.session_manager:
