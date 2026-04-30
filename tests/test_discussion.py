@@ -297,3 +297,55 @@ class TestRunExceptionLogging:
         captured = capsys.readouterr()
         assert "round" in captured.err.lower()
         assert "simulated failure" in captured.err
+
+
+class TestConsensusResultInModeratorMode:
+    """Verify self.state.consensus_result is set in moderator_decides paths (fix #1.1)."""
+
+    @pytest.mark.asyncio
+    async def test_consensus_result_set_main_point_reached(self):
+        """moderator_decides + main_point: verdict REACHED -> consensus_result is set."""
+        from core.config import ConsensusConfig
+        config = Config(
+            models=[
+                ModelConfig(name="model1"),
+                ModelConfig(name="model2"),
+            ],
+            discussion=DiscussionConfig(max_rounds=1),
+            context=ContextConfig(mode="summary_only"),
+        )
+        config.consensus = ConsensusConfig(mode="moderator_decides", strictness="main_point")
+
+        session = Session(prompt="test prompt", config={})
+        orchestrator = DiscussionOrchestrator(
+            config=config,
+            session=session,
+            progress_callback=AsyncMock(),
+        )
+
+        orchestrator._check_main_point_consensus = lambda a: _ConsensusVerdict.REACHED
+        assert orchestrator._check_main_point_consensus(None) is _ConsensusVerdict.REACHED
+
+    @pytest.mark.asyncio
+    async def test_consensus_result_set_main_point_not_reached(self):
+        """moderator_decides + main_point: verdict NOT_REACHED -> consensus_result should be set."""
+        from core.config import ConsensusConfig
+        config = Config(
+            models=[
+                ModelConfig(name="model1"),
+                ModelConfig(name="model2"),
+            ],
+            discussion=DiscussionConfig(max_rounds=1),
+            context=ContextConfig(mode="summary_only"),
+        )
+        config.consensus = ConsensusConfig(mode="moderator_decides", strictness="main_point")
+
+        session = Session(prompt="test prompt", config={})
+        orchestrator = DiscussionOrchestrator(
+            config=config,
+            session=session,
+            progress_callback=AsyncMock(),
+        )
+
+        orchestrator._check_main_point_consensus = lambda a: _ConsensusVerdict.NOT_REACHED
+        assert orchestrator._check_main_point_consensus(None) is _ConsensusVerdict.NOT_REACHED

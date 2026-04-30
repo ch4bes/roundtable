@@ -663,13 +663,13 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 if self.config.consensus.mode == "moderator_decides":
                     if self.config.consensus.strictness == "main_point":
                         verdict = self._check_main_point_consensus(attributed)
-                        consensus_reached = False  # default, updated below if needed
+                        consensus_reached = False   # default, updated below if needed
 
                         if verdict is _ConsensusVerdict.REACHED:
                             consensus_reached = True
                         elif verdict is _ConsensusVerdict.INCONSISTENT:
-                            pass  # fall through to reprompt path
-                        # else: verdict is NOT_REACHED → stays False
+                            pass   # fall through to reprompt path
+                         # else: verdict is NOT_REACHED → stays False
 
                         if verdict is not _ConsensusVerdict.REACHED and attributed and sim_matrix is not None:
                             threshold = self.config.discussion.consensus_threshold
@@ -680,14 +680,47 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                                 print(f"[Round {round_num}] High agreement ({agreement_pct:.1f}%) but moderator said {verdict_label}. Reprompting...")
                                 revised = await self._reprompt_for_consensus(
                                     round_num, attributed, sim_matrix, sim_names
-                                )
+                                 )
                                 if revised == "REACHED":
                                     consensus_reached = True
                                     attributed.consensus_assessment = "REACHED"
+
+                         # Build ConsensusResult for TUI state (fix #1.1)
+                        _agreement_pct = 0.0
+                        if sim_matrix is not None:
+                            _agreement_pct = self._calculate_agreement_percentage(
+                                sim_matrix, self.config.discussion.consensus_threshold
+                             )
+                        _n = len(sim_names) if sim_names else 0
+                        _total_pairs = _n * (_n - 1) // 2 if _n > 1 else 0
+                        self.state.consensus_result = ConsensusResult(
+                            reached=consensus_reached,
+                            percentage=_agreement_pct,
+                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
+                            total_pairs=_total_pairs,
+                            method=self.config.consensus.method,
+                           )
                     else:
                         consensus_reached = (
                             attributed.consensus_assessment == "REACHED" if attributed else False
-                        )
+                         )
+
+                         # Build ConsensusResult for TUI state (fix #1.1)
+                        if sim_matrix is not None:
+                            _agreement_pct = self._calculate_agreement_percentage(
+                                sim_matrix, self.config.discussion.consensus_threshold
+                              )
+                        else:
+                            _agreement_pct = 100.0 if consensus_reached else 0.0
+                        _n = len(sim_names) if sim_names else 0
+                        _total_pairs = _n * (_n - 1) // 2 if _n > 1 else 0
+                        self.state.consensus_result = ConsensusResult(
+                            reached=consensus_reached,
+                            percentage=_agreement_pct,
+                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
+                            total_pairs=_total_pairs,
+                            method=self.config.consensus.method,
+                           )
                 else:
                     consensus_result = await self._check_consensus(round_num)
                     self.state.consensus_result = consensus_result

@@ -1,5 +1,6 @@
 import httpx
 import json
+import sys
 from typing import AsyncGenerator
 from dataclasses import dataclass
 
@@ -143,5 +144,6 @@ class OllamaClient:
             client = await self._get_client()
             response = await client.get("/api/tags")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            print(f"Warning: Ollama health check failed: {e}", file=sys.stderr)
             return False

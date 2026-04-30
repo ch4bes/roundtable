@@ -232,3 +232,23 @@ class TestStreamGenerate:
             result += chunk
 
         assert result == ""
+
+class TestIsAvailable:
+    """Tests for is_available() health check (fix #1.5)."""
+
+    @pytest.mark.asyncio
+    async def test_is_available_logs_failure(self, capsys):
+        """When health check fails, the error is logged to stderr."""
+        client = OllamaClient(base_url="http://localhost:19999")
+        result = await client.is_available()
+        assert result is False
+        captured = capsys.readouterr()
+        assert "health check failed" in captured.err.lower()
+
+    @pytest.mark.asyncio
+    async def test_is_available_uses_shared_client(self):
+        """is_available() creates the shared _client on first call."""
+        client = OllamaClient(base_url="http://localhost:19999")
+        await client.is_available()
+        assert client._client is not None
+        await client.close()
