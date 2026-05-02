@@ -126,7 +126,13 @@ class OllamaClient:
         }
         response = await client.post("/api/embeddings", json=payload)
         response.raise_for_status()
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise RuntimeError(
+                f"Ollama /api/embeddings returned non-JSON response: "
+                f"{response.text[:200]}"
+            ) from e
         return EmbeddingResponse(
             embedding=data.get("embedding", []),
             model=data.get("model", model),
@@ -136,8 +142,25 @@ class OllamaClient:
         client = await self._get_client()
         response = await client.get("/api/tags")
         response.raise_for_status()
-        data = response.json()
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise RuntimeError(
+                f"Ollama /api/tags returned non-JSON response: "
+                f"{response.text[:200]}"
+            ) from e
         return [model["name"] for model in data.get("models", [])]
+
+    async def check_models(self, model_names: list[str]) -> list[str]:
+        """
+        Check which of the given model names exist in Ollama.
+
+        :param model_names: Names to check (e.g. ["gemma4:e4b", "qwen3.5:9b"])
+        :returns: List of model names that were NOT found in Ollama.
+        """
+        available = await self.list_models()
+        missing = [name for name in model_names if name not in available]
+        return missing
 
     async def is_available(self) -> bool:
         try:

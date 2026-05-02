@@ -160,9 +160,10 @@ class ExportScreen(ModalScreen):
                     from storage import Exporter
 
                     filename = f"discussion_{self.session.id[:8]}.{format}"
+                    config_snapshot = self.session.config_snapshot or {}
                     path = (
                         Path(
-                            self.session.config_snapshot.get("storage", {}).get(
+                            config_snapshot.get("storage", {}).get(
                               "sessions_dir", "./sessions"
                           )
                       )

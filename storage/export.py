@@ -143,7 +143,8 @@ class Exporter:
                 lines.append(table)
                 n = len(sim["model_names"])
                 matrix = sim["matrix"]
-                threshold = session.config_snapshot.get("discussion", {}).get("consensus_threshold", 0.75)
+                config_snapshot = session.config_snapshot or {}
+                threshold = config_snapshot.get("discussion", {}).get("consensus_threshold", 0.75)
                 agreeing_pairs = sum(
                     1 for i in range(n) for j in range(i + 1, n) if matrix[i][j] >= threshold
                 )

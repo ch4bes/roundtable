@@ -30,8 +30,9 @@ class InputBuffer:
         return self._ready.is_set()
 
     def clear(self):
-        self._buffer = ""
-        self._ready.clear()
+        with self._lock:
+            self._buffer = ""
+            self._ready.clear()
 
 
 input_buffer: Optional[InputBuffer] = None

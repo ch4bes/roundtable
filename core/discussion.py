@@ -158,7 +158,7 @@ class DiscussionOrchestrator:
             return await self.human_input_callback(context, round_num, position)
 
         if self.config.human_participant.enabled:
-            prompt_text = self.config.human_participant.prompt.format(prompt=self.session.prompt)
+            prompt_text = self.config.human_participant.prompt.replace("{prompt}", self.session.prompt)
             
             latest_summary = self.session.get_latest_attributed_summary()
             if latest_summary and round_num > 1:
@@ -184,7 +184,7 @@ class DiscussionOrchestrator:
             print("Type 's' at any time to skip. (Ctrl+C stops the program.)")
             
             while True:
-                user_input = sys.stdin.readline()
+                user_input = await asyncio.to_thread(sys.stdin.readline)
                 
                 # Skip (before empty check so 's' works even on first line)
                 if user_input.strip().lower() == 's':

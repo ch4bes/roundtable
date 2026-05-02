@@ -96,10 +96,37 @@ class RoundtableApp(App):
             self.config = Config.load(self.config_path)
             self.session_manager = SessionManager(self.config.storage.sessions_dir)
             self.sub_title = f"Configured with {len(self.config.models)} models"
+            
+            # Validate models exist in Ollama (permissive - warn but don't fail)
+            asyncio.create_task(self._validate_models_on_startup())
+            
             self._show_prompt_screen()
         except Exception as e:
             self.notify(f"Error loading config: {e}", severity="error")
             self.exit(1)
+
+    async def _validate_models_on_startup(self) -> None:
+        """Validate that configured models exist in Ollama (permissive - warn but don't fail)."""
+        try:
+            from core.ollama_client import OllamaClient
+            
+            client = OllamaClient(
+                base_url=self.config.ollama.base_url,
+                timeout=self.config.ollama.timeout,
+            )
+            all_names = {m.name for m in self.config.models} | {self.config.moderator.name}
+            missing = await client.check_models(list(all_names))
+            for name in missing:
+                self.notify(
+                    f"Model '{name}' not found in Ollama. Discussion may fail for this model.",
+                    severity="warning",
+                )
+            await client.close()
+        except Exception as e:
+            self.notify(
+                f"Could not validate models: {e}",
+                severity="warning",
+            )
 
     def _show_prompt_screen(self) -> None:
         self.push_screen(PromptScreen(config=self.config))

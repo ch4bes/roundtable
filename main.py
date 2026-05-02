@@ -179,6 +179,29 @@ async def export_session(
 async def run_cli_discussion(config: Config, prompt: str):
     from core import DiscussionOrchestrator
     from storage import Session
+    from core.ollama_client import OllamaClient
+
+    # Validate models exist in Ollama (permissive - warn but don't fail)
+    client = OllamaClient(
+        base_url=config.ollama.base_url,
+        timeout=config.ollama.timeout,
+    )
+    all_names = {m.name for m in config.models} | {config.moderator.name}
+    try:
+        missing = await client.check_models(list(all_names))
+        for name in missing:
+            print(
+                f"Warning: Model '{name}' not found in Ollama. "
+                f"Discussion may fail for this model.",
+                file=sys.stderr,
+            )
+    except Exception as e:
+        print(
+            f"Warning: Could not validate models: {e}",
+            file=sys.stderr,
+        )
+    finally:
+        await client.close()
 
     print(f"Starting roundtable discussion...")
     print(f"Models: {', '.join(m.name for m in config.models)}")

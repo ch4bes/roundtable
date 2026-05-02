@@ -243,7 +243,7 @@ class Session:
     def from_dict(cls, data: dict) -> "Session":
         session = cls(
             prompt=data["prompt"],
-            config=data.get("config_snapshot"),
+            config=data.get("config_snapshot", {}),
             session_id=data["id"],
         )
         session.created_at = data["created_at"]
