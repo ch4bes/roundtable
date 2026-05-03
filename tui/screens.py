@@ -97,7 +97,7 @@ class SessionListScreen(ModalScreen):
                 for session in sessions:
                     table.add_row(
                         session["id"][:36],
-                        session["prompt"][:58] + "..."
+                        session["prompt"][:80] + "..."
                         if len(session["prompt"]) > 60
                         else session["prompt"],
                         session["status"],
@@ -151,7 +151,7 @@ class ExportScreen(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id in ["export-md", "export-json"]:
-            format = "md" if event.button.id == "export-md" else "json"
+            file_format = "md" if event.button.id == "export-md" else "json"
             import asyncio
             from pathlib import Path
 
@@ -159,7 +159,7 @@ class ExportScreen(ModalScreen):
                 try:
                     from storage import Exporter
 
-                    filename = f"discussion_{self.session.id[:8]}.{format}"
+                    filename = f"discussion_{self.session.id[:8]}.{file_format}"
                     config_snapshot = self.session.config_snapshot or {}
                     path = (
                         Path(
@@ -169,7 +169,7 @@ class ExportScreen(ModalScreen):
                       )
                       / filename
                   )
-                    await Exporter.export(self.session, path, format)
+                    await Exporter.export(self.session, path, file_format)
                     self.notify(f"Exported to {path}", severity="information")
                     self.app.pop_screen()
                 except Exception as e:

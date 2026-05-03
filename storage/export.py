@@ -7,7 +7,7 @@ import aiofiles
 
 class Exporter:
     @staticmethod
-    def _format_matrix_table(model_names, matrix):
+    def _format_matrix_table(model_names: list[str], matrix: list[list[float]]) -> str:
         n = len(model_names)
         if n == 0:
             return ""
@@ -56,7 +56,7 @@ class Exporter:
         return "\n".join(lines)
 
     @staticmethod
-    def _format_matrix_md_table(model_names, matrix):
+    def _format_matrix_md_table(model_names: list[str], matrix: list[list[float]]) -> str:
         n = len(model_names)
         if n == 0:
             return ""
@@ -95,7 +95,6 @@ class Exporter:
             f"**Status:** {session.status}",
             f"**Rounds:** {session.completed_rounds}",
             f"**Consensus:** {'Yes' if session.consensus_reached else 'No'}",
-            "" if session.consensus_reached else "",
         ]
 
         if session.consensus_round:

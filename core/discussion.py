@@ -10,7 +10,7 @@ from .config import Config
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .consensus import ConsensusDetector, ConsensusResult
-from .input_reader import InputBuffer, get_input_buffer
+from .input_reader import InputBuffer
 from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
 from storage.session import Session, SessionManager, Response
 
@@ -65,11 +65,15 @@ class DiscussionOrchestrator:
         )
 
     async def _rotate_model_order(self, round_num: int) -> list[str]:
+        import random
         model_names = [m.name for m in self.config.models]
         if self.config.discussion.rotation_order == "sequential":
             rotation = (round_num - 1) % len(model_names)
             return model_names[rotation:] + model_names[:rotation]
-        return model_names
+        else:  # "random"
+            shuffled = model_names.copy()
+            random.shuffle(shuffled)
+            return shuffled
 
     async def _build_context(
         self,
@@ -127,27 +131,6 @@ class DiscussionOrchestrator:
             return ParticipantPrompt.initial(self.session.prompt)
 
         return ParticipantPrompt.initial(self.session.prompt)
-
-    async def _generate_response(
-        self,
-        model_name: str,
-        context: str,
-        model_config,
-    ) -> str:
-        model_config_obj = next(
-            (m for m in self.config.models if m.name == model_name),
-            self.config.models[0],
-        )
-
-        response = await self.ollama.generate(
-            model=model_name,
-            prompt=context,
-            system=ParticipantPrompt.system(),
-            temperature=model_config_obj.temperature,
-            max_tokens=model_config_obj.max_tokens,
-            num_ctx=model_config_obj.num_ctx,
-        )
-        return response.response
 
     async def _handle_human_input(
         self,

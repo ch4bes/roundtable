@@ -293,7 +293,7 @@ class SessionManager:
             sessions.append(
                 {
                     "id": data["id"],
-                    "prompt": data["prompt"][:100] + "..."
+                    "prompt": data["prompt"][:80] + "..."
                     if len(data["prompt"]) > 100
                     else data["prompt"],
                     "status": data["status"],

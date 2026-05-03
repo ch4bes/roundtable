@@ -20,19 +20,40 @@ def get_ollama_models():
             text=True,
             check=True,
         )
-        lines = result.stdout.strip().split("\n")[1:]
+        lines = result.stdout.strip().split("\n")
+        if len(lines) < 2:
+            print("Warning: No models found in 'ollama list' output.")
+            return []
+
+        # Parse header to find column positions
+        header = lines[0].lower()
+        col_names = header.split()
+        try:
+            name_col = col_names.index("name")
+            size_col = col_names.index("size")
+        except ValueError:
+            # Fallback: assume standard format (name=0, size=2)
+            print("Warning: Could not parse 'ollama list' headers. Using fallback column positions.")
+            name_col, size_col = 0, 2
+
         models = []
-        for line in lines:
-            if line.strip():
-                parts = line.split()
-                if len(parts) >= 3:
-                    name = parts[0]
-                    size_str = parts[2]
-                    size_gb = parse_size(size_str)
-                    models.append({"name": name, "size_gb": size_gb})
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) > max(name_col, size_col):
+                name = parts[name_col]
+                size_str = parts[size_col]
+                size_gb = parse_size(size_str)
+                models.append({"name": name, "size_gb": size_gb})
+            else:
+                print(f"Warning: Skipping unparseable line: {line.strip()}")
         return models
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Error: Could not get Ollama models: {e}", file=sys.stderr)
+        return []
+    except (ValueError, IndexError) as e:
+        print(f"Error: Failed to parse model list: {e}", file=sys.stderr)
         return []
 
 
