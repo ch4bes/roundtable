@@ -25,7 +25,11 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 
 ```bash
 # Clone the repository
+git clone https://github.com/example/roundtable.git
 cd roundtable
+
+# Install the package in editable mode (installs dependencies + 'roundtable' command)
+pip install -e .
 
 # Run tests
 pytest
@@ -33,6 +37,20 @@ pytest
 # Launch TUI
 roundtable
 ```
+
+### Alternative: Run without installing the package
+
+If you just want to install dependencies without the package:
+
+```bash
+# Install dependencies only
+pip install textual rich pydantic pydantic-settings httpx aiofiles numpy
+
+# Run with Python directly
+python main.py
+```
+
+**Note:** If you encounter `ModuleNotFoundError`, make sure you're using the same Python where you installed the dependencies.
 
 ## Configuration
 
