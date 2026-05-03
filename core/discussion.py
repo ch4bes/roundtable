@@ -307,7 +307,7 @@ class DiscussionOrchestrator:
 
         lines = text.split("\n")
         current_model = None
-        final_consensus_section_started = False
+        current_section = None  # Track which major section we're in
 
         for line in lines:
             stripped = line.strip()
@@ -316,42 +316,61 @@ class DiscussionOrchestrator:
             heading_match = re.match(r'^#{2,5}\s?(.*)', stripped)
             if heading_match:
                 heading_text = heading_match.group(1).strip()
+                heading_level = len(heading_match.group(0)) - len(heading_match.group(0).lstrip('#'))
 
-                # 3+ hashes = individual model section
-                if heading_match.group(0).startswith("###") and heading_text:
+                # 3+ hashes (###) = individual model section
+                if heading_level >= 3 and heading_text:
                     current_model = heading_text
                     individual_summaries[current_model] = []
+                    current_section = "individual"
 
-                # Section headings (Agreement, Consensus, Final Consensus)
-                elif re.search(r'agreement|consensus', heading_text, re.I):
+                # 2 hashes (##) = major section headings
+                elif heading_level == 2 and heading_text:
                     current_model = None
-                    if re.search(r'final\s*consensus', heading_text, re.I):
-                        final_consensus_section_started = True
+                    heading_lower = heading_text.lower()
+                    
+                    if "final" in heading_lower and "consensus" in heading_lower:
+                        current_section = "final_consensus"
+                    elif "agreement" in heading_lower:
+                        current_section = "agreement"
+                    elif "similarity" in heading_lower:
+                        current_section = "similarity"
+                    elif "individual" in heading_lower and "summary" in heading_lower:
+                        current_section = "individual_summaries"
+                    else:
+                        current_section = "other"
                 else:
+                    current_section = None
                     current_model = None
+
+                continue  # Skip to next line after processing heading
 
             # BULLETS: support - * • —
-            elif current_model:
+            if current_model:
                 bullet_match = re.match(r'^[-*•–—]\s+(.*)', stripped)
                 if bullet_match:
                     individual_summaries[current_model].append(bullet_match.group(1).strip())
                     continue
 
-            # CONSENSUS VERDICT: flexible spacing
-            # Match "consensus:" or "Consensus Assessment:" patterns
-            if re.search(r'consensus\s*:\s*', stripped, re.I) or re.search(r'consensus\s+assessment', stripped, re.I):
-                if "NOT REACHED" in stripped.upper():
-                    consensus_assessment = "NOT REACHED"
-                elif "REACHED" in stripped.upper() and not final_consensus_section_started:
-                    consensus_assessment = "REACHED"
+            # CONSENSUS VERDICT: Parse in Final Consensus section, or fall back to Consensus Assessment
+            # if no Final Consensus section exists
+            if current_section == "final_consensus":
+                # Only look in the Final Consensus section for the definitive verdict
+                if re.search(r'consensus\s*:\s*', stripped, re.I):
+                    if "NOT REACHED" in stripped.upper():
+                        consensus_assessment = "NOT REACHED"
+                    elif "REACHED" in stripped.upper():
+                        consensus_assessment = "REACHED"
+            elif current_section != "final_consensus" and consensus_assessment == "NOT REACHED":
+                # Fallback: if no Final Consensus section, look for Consensus Assessment anywhere
+                # Only applies if we haven't found a definitive verdict yet (default is NOT REACHED)
+                if re.search(r'consensus\s+assessment\s*:\s*', stripped, re.I):
+                    if "NOT REACHED" in stripped.upper():
+                        consensus_assessment = "NOT REACHED"
+                    elif "REACHED" in stripped.upper():
+                        consensus_assessment = "REACHED"
 
-            if final_consensus_section_started and "REACHED" in stripped.upper():
-                if "NOT REACHED" in stripped.upper():
-                    consensus_assessment = "NOT REACHED"
-                else:
-                    consensus_assessment = "REACHED"
-
-            # CONFIDENCE: flexible spacing
+            # CONFIDENCE: Can be in Final Consensus section
             if re.search(r'confidence\s*:|CONFIDENCE:', stripped, re.I):
                 if "HIGH" in stripped.upper():
                     confidence = "HIGH"
@@ -360,8 +379,8 @@ class DiscussionOrchestrator:
                 else:
                     confidence = "MEDIUM"
 
-            # AGREEMENT ANALYSIS: collect text outside model sections
-            elif current_model is None and stripped and not stripped.startswith("#"):
+            # AGREEMENT ANALYSIS: collect text in agreement section
+            if current_section == "agreement" and stripped and not stripped.startswith("#"):
                 if not agreement_analysis:
                     agreement_analysis = stripped
                 else:
@@ -373,6 +392,22 @@ class DiscussionOrchestrator:
 
         if not agreement_analysis:
             agreement_analysis = "(Analysis not provided)"
+
+        # FIX 3: Validation check - detect contradictions between agreement_analysis and consensus_assessment
+        # If agreement_analysis explicitly says "NOT REACHED" but consensus_assessment is "REACHED",
+        # there's a contradiction and we should default to the more conservative assessment
+        if consensus_assessment == "REACHED" and agreement_analysis:
+            # Check if agreement_analysis explicitly states consensus was NOT reached
+            agreement_upper = agreement_analysis.upper()
+            # Look for explicit "Consensus: NOT REACHED" or similar patterns in the analysis
+            if re.search(r'consensus\s*:\s*not\s*reached', agreement_upper) or \
+               re.search(r'consensus\s+not\s+reached', agreement_upper) or \
+               re.search(r'no\s+consensus', agreement_upper):
+                print(f"[Warning] Consensus assessment contradiction detected:")
+                print(f"  - consensus_assessment: {consensus_assessment}")
+                print(f"  - agreement_analysis contains: 'NOT REACHED'")
+                print(f"  - Defaulting to NOT REACHED")
+                consensus_assessment = "NOT REACHED"
 
         return {
             "individual_summaries": individual_summaries,

@@ -288,8 +288,16 @@ class TestOllamaClientNonJsonResponse:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.headers = {"content-type": "text/html"}
-            mock_response.text = "<html>Error</html>"
-            mock_response.strip.return_value = "<html>Error</html>"
+            
+            # Configure the mock chain: response.text.strip().split("\n")
+            # We need .strip() to return a MagicMock so we can mock .split() on it
+            mock_response.text = MagicMock()
+            mock_response.text.return_value = "<html>Error</html>"
+            
+            # .strip() should return a MagicMock (not the string) so we can mock .split()
+            mock_response.text.strip.return_value = MagicMock()
+            # When .split() is called on the result of .strip(), return the list
+            mock_response.text.strip.return_value.split.return_value = ["<html>Error</html>"]
 
             # raise_for_status doesn't raise for 200
             mock_response.raise_for_status = MagicMock()
@@ -299,8 +307,6 @@ class TestOllamaClientNonJsonResponse:
                 raise ValueError("Expecting value")
 
             mock_response.json = json_side_effect
-            mock_response.text.strip.return_value = "<html>Error</html>"
-            mock_response.text.strip().split.return_value = ["<html>Error</html>"]
 
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=mock_response)
