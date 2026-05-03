@@ -12,6 +12,11 @@ class Exporter:
         if n == 0:
             return ""
         
+        # Bounds checking: ensure matrix dimensions match model_names
+        if len(matrix) != n:
+            print(f"Warning: Model names ({n}) and matrix ({len(matrix)}) dimension mismatch in export. Skipping matrix.")
+            return "(Matrix dimension mismatch — skipping)"
+        
         # Compute each data column's width
         col_widths = [len(model_names[j]) for j in range(n)]
         
@@ -55,6 +60,11 @@ class Exporter:
         n = len(model_names)
         if n == 0:
             return ""
+        
+        # Bounds checking: ensure matrix dimensions match model_names
+        if len(matrix) != n:
+            print(f"Warning: Model names ({n}) and matrix ({len(matrix)}) dimension mismatch in export. Skipping matrix.")
+            return "(Matrix dimension mismatch — skipping)"
         
         header = "| Model |" + " | ".join(name for name in model_names) + " |"
         separator = (

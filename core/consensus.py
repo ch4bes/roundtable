@@ -67,6 +67,15 @@ class ConsensusDetector:
         )
 
     def _detect_clustering(self, similarity_matrix: np.ndarray) -> ConsensusResult:
+        """
+        Clustering-based consensus: responses form clusters via similarity >= threshold.
+
+        Consensus is reached when the largest cluster has a STRICT MAJORITY
+        (more than half of all responses). For example:
+         - 2 models: cluster of 2 → consensus (2 > 1)
+         - 4 models: cluster of 2 → NO consensus (2 ≤ 2), needs 3+
+         - 3 models: cluster of 2 → consensus (2 > 1.5)
+        """
         n = similarity_matrix.shape[0]
         if n < 2:
             return ConsensusResult(

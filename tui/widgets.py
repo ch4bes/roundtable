@@ -101,6 +101,12 @@ class SimilarityMatrix(Static):
 
         lines = ["Similarity Matrix:"]
         n = len(self._model_names)
+        
+        # Bounds checking: ensure matrix dimensions match model_names
+        n_matrix = self._matrix.shape[0] if self._matrix is not None and self._matrix.size > 0 else 0
+        if n != n_matrix:
+            content_widget.update(f"Matrix dimension mismatch: {n} names, {n_matrix} rows")
+            return
 
         header = "       " + "  ".join(f"{name[:6]:>6}" for name in self._model_names)
         lines.append(header)

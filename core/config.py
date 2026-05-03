@@ -34,6 +34,20 @@ class DiscussionConfig(BaseModel):
     consensus_method: Literal["pairwise", "clustering"] = "clustering"
     rotation_order: Literal["sequential", "random"] = "sequential"
     final_review_enabled: bool = True
+    
+    # Embedding-based similarity thresholds for _check_consensus:
+    consensus_agreement_when_reached: float = Field(
+        default=0.50, ge=0, le=1,
+        description="Similarity threshold when moderator assessed REACHED (lower bar)"
+    )
+    consensus_agreement_when_not_reached: float = Field(
+        default=0.75, ge=0, le=1,
+        description="Similarity threshold when moderator assessed NOT REACHED (higher bar)"
+    )
+    reprompt_agreement_threshold: float = Field(
+        default=0.70, ge=0, le=1,
+        description="Agreement pct (0-1) at which moderator is reprompted to reconsider"
+    )
 
 
 class ContextConfig(BaseModel):

@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 import sys
 from datetime import datetime
@@ -291,6 +292,31 @@ class DiscussionOrchestrator:
         return response.response
 
     def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
+        """
+        Parse the moderator's attributed summary from Markdown text.
+        
+        Uses a two-tier approach:
+        1. First tries to parse JSON blocks (preferred - most reliable)
+        2. Falls back to regex-based Markdown parsing with tolerant patterns
+        """
+        import re
+        
+        # Tier 1: Try JSON block parsing first
+        json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)
+        if json_match:
+            try:
+                parsed = json.loads(json_match.group(1))
+                if "individual_summaries" in parsed and "consensus_assessment" in parsed:
+                    return {
+                        "individual_summaries": parsed.get("individual_summaries", {}),
+                        "agreement_analysis": parsed.get("agreement_analysis", "(Not provided)"),
+                        "consensus_assessment": parsed.get("consensus_assessment", "NOT REACHED"),
+                        "confidence": parsed.get("confidence", "MEDIUM"),
+                    }
+            except json.JSONDecodeError:
+                pass  # Fall through to Markdown parsing
+        
+        # Tier 2: Regex-based Markdown parsing (tolerant of LLM variations)
         individual_summaries: dict[str, list[str]] = {}
         agreement_analysis = ""
         consensus_assessment = "NOT REACHED"
@@ -298,51 +324,65 @@ class DiscussionOrchestrator:
 
         lines = text.split("\n")
         current_model = None
-
         final_consensus_section_started = False
-        for line in lines:
-            line = line.strip()
 
-            if line.startswith("### "):
-                current_model = line[4:].strip()
-                individual_summaries[current_model] = []
-            elif line.startswith("- ") and current_model:
-                individual_summaries[current_model].append(line[2:])
-            elif line.startswith("## Agreement") or "Agreement Analysis" in line:
-                current_model = None
-            elif line.startswith("## Final Consensus") or "Final Consensus" in line:
-                current_model = None
-                final_consensus_section_started = True
-            elif line.startswith("## Consensus") or line.startswith("## Final"):
-                current_model = None
-                final_consensus_section_started = True
-            elif final_consensus_section_started and "Consensus:" in line:
-                if "NOT REACHED" in line.upper():
+        for line in lines:
+            stripped = line.strip()
+
+            # HEADINGS: match 2-5 # with optional spacing
+            heading_match = re.match(r'^#{2,5}\s?(.*)', stripped)
+            if heading_match:
+                heading_text = heading_match.group(1).strip()
+
+                # 3+ hashes = individual model section
+                if heading_match.group(0).startswith("###") and heading_text:
+                    current_model = heading_text
+                    individual_summaries[current_model] = []
+
+                # Section headings (Agreement, Consensus, Final Consensus)
+                elif re.search(r'agreement|consensus', heading_text, re.I):
+                    current_model = None
+                    if re.search(r'final\s*consensus', heading_text, re.I):
+                        final_consensus_section_started = True
+                else:
+                    current_model = None
+
+            # BULLETS: support - * • —
+            elif current_model:
+                bullet_match = re.match(r'^[-*•–—]\s+(.*)', stripped)
+                if bullet_match:
+                    individual_summaries[current_model].append(bullet_match.group(1).strip())
+                    continue
+
+            # CONSENSUS VERDICT: flexible spacing
+            # Match "consensus:" or "Consensus Assessment:" patterns
+            if re.search(r'consensus\s*:\s*', stripped, re.I) or re.search(r'consensus\s+assessment', stripped, re.I):
+                if "NOT REACHED" in stripped.upper():
                     consensus_assessment = "NOT REACHED"
-                elif "REACHED" in line.upper():
+                elif "REACHED" in stripped.upper() and not final_consensus_section_started:
                     consensus_assessment = "REACHED"
-            elif not final_consensus_section_started and ("Consensus Assessment:" in line or "**Consensus Assessment:**" in line):
-                if "NOT REACHED" in line.upper():
+
+            if final_consensus_section_started and "REACHED" in stripped.upper():
+                if "NOT REACHED" in stripped.upper():
                     consensus_assessment = "NOT REACHED"
-                elif "REACHED" in line.upper():
+                else:
                     consensus_assessment = "REACHED"
-            elif "Consensus:" in line:
-                if "NOT REACHED" in line.upper():
-                    consensus_assessment = "NOT REACHED"
-                elif "REACHED" in line.upper() and not final_consensus_section_started:
-                    consensus_assessment = "REACHED"
-            elif "Confidence:" in line or "CONFIDENCE:" in line:
-                if "HIGH" in line.upper():
+
+            # CONFIDENCE: flexible spacing
+            if re.search(r'confidence\s*:|CONFIDENCE:', stripped, re.I):
+                if "HIGH" in stripped.upper():
                     confidence = "HIGH"
-                elif "LOW" in line.upper():
+                elif "LOW" in stripped.upper():
                     confidence = "LOW"
                 else:
                     confidence = "MEDIUM"
-            elif current_model is None and line and not line.startswith("#"):
+
+            # AGREEMENT ANALYSIS: collect text outside model sections
+            elif current_model is None and stripped and not stripped.startswith("#"):
                 if not agreement_analysis:
-                    agreement_analysis = line
+                    agreement_analysis = stripped
                 else:
-                    agreement_analysis += "\n" + line
+                    agreement_analysis += "\n" + stripped
 
         if not individual_summaries:
             for r in round_responses:
@@ -482,6 +522,8 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
         if summary and attributed:
             summary_embedding = await self.similarity_engine.get_embedding(summary)
 
+            # NOTE: Sequential embedding calls (no Ollama batch API). If batch support is
+            # added, parallelize with asyncio.gather().
             similarities_to_summary = []
             for r in all_responses:
                 resp_embedding = await self.similarity_engine.get_embedding(r.content)
@@ -489,9 +531,9 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 similarities_to_summary.append((r.model, sim))
 
             if attributed.consensus_assessment == "REACHED":
-                threshold = 0.50
+                threshold = self.config.discussion.consensus_agreement_when_reached
             else:
-                threshold = 0.75
+                threshold = self.config.discussion.consensus_agreement_when_not_reached
 
             agreeing = sum(1 for _, sim in similarities_to_summary if sim >= threshold)
             percentage = (agreeing / len(all_responses)) * 100
@@ -675,7 +717,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             threshold = self.config.discussion.consensus_threshold
                             agreement_pct = self._calculate_agreement_percentage(sim_matrix, threshold)
 
-                            if agreement_pct >= 70:
+                            if agreement_pct >= (self.config.discussion.reprompt_agreement_threshold * 100):
                                 verdict_label = "NOT REACHED" if verdict is _ConsensusVerdict.NOT_REACHED else "INCONSISTENT"
                                 print(f"[Round {round_num}] High agreement ({agreement_pct:.1f}%) but moderator said {verdict_label}. Reprompting...")
                                 revised = await self._reprompt_for_consensus(
