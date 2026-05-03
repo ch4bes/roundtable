@@ -245,6 +245,19 @@ class DiscussionOrchestrator:
             full_text=full_text,
         )
 
+        # Additional validation: check for contradictions between consensus_assessment and full_text
+        # The full_text contains the moderator's original text which may have the definitive verdict
+        if parsed["consensus_assessment"] == "REACHED":
+            full_text_upper = full_text.upper()
+            if re.search(r'consensus\s*:\s*not\s*reached', full_text_upper) or \
+               re.search(r'consensus\s+not\s+reached', full_text_upper):
+                print(f"[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED")
+                print(f"  - Updating consensus_assessment to NOT REACHED")
+                # Update the session with the corrected value
+                attributed = self.session.get_attributed_summary(round_num)
+                if attributed:
+                    attributed.consensus_assessment = "NOT REACHED"
+
         return full_text
 
     async def _generate_final_review(self) -> str:
@@ -742,8 +755,21 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                                     round_num, attributed, sim_matrix, sim_names
                                  )
                                 if revised == "REACHED":
-                                    consensus_reached = True
-                                    attributed.consensus_assessment = "REACHED"
+                                    # Validation check: ensure no contradiction with full_text or agreement_analysis
+                                    # The full_text contains the moderator's original assessment
+                                    full_text = attributed.full_text if hasattr(attributed, 'full_text') and attributed.full_text else ""
+                                    agreement_text = attributed.agreement_analysis if attributed.agreement_analysis else ""
+                                    combined_text = (full_text + " " + agreement_text).upper()
+                                    
+                                    # Check if the original text said NOT REACHED
+                                    if re.search(r'consensus\s*:\s*not\s*reached', combined_text) or \
+                                       re.search(r'consensus\s+not\s+reached', combined_text):
+                                        print(f"[Warning] Reprompt returned REACHED but original assessment said NOT REACHED")
+                                        print(f"  - Keeping original NOT REACHED assessment")
+                                        # Don't update consensus_reached or consensus_assessment - keep original
+                                    else:
+                                        consensus_reached = True
+                                        attributed.consensus_assessment = "REACHED"
 
                          # Build ConsensusResult for TUI state (fix #1.1)
                         _agreement_pct = 0.0
