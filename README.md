@@ -23,14 +23,21 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 
 ## Installation
 
+### Option 1: Virtual environment (recommended)
+
 ```bash
 # Clone the repository
 git clone https://github.com/example/roundtable.git
 cd roundtable
 
-# Install the package in editable mode (installs dependencies + 'roundtable' command)
-# The --user flag works on both macOS and Linux to avoid system-wide installation issues
-python3 -m pip install -e . --user
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+source venv/bin/activate
+
+# Install the package in editable mode
+python3 -m pip install -e .
 
 # Run tests
 python3 -m pytest
@@ -39,16 +46,24 @@ python3 -m pytest
 roundtable
 ```
 
-### Alternative: Run without installing the package
+To activate the virtual environment in the future:
+```bash
+cd roundtable
+source venv/bin/activate
+roundtable
+```
 
-If you just want to install dependencies without the package:
+### Option 2: User-wide installation (no activation needed)
+
+If you prefer not to use a virtual environment:
 
 ```bash
-# Install dependencies only
-python3 -m pip install textual rich pydantic pydantic-settings httpx aiofiles numpy --user
+# Clone the repository
+git clone https://github.com/example/roundtable.git
+cd roundtable
 
-# Run with Python directly
-python3 main.py
+# Install the package in editable mode
+python3 -m pip install -e . --user
 ```
 
 **Note:** If `roundtable` command is not found after installation, you may need to add `~/.local/bin` to your PATH:
