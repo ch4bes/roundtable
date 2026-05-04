@@ -29,7 +29,8 @@ git clone https://github.com/example/roundtable.git
 cd roundtable
 
 # Install the package in editable mode (installs dependencies + 'roundtable' command)
-python3 -m pip install -e .
+# The --user flag works on both macOS and Linux to avoid system-wide installation issues
+python3 -m pip install -e . --user
 
 # Run tests
 python3 -m pytest
@@ -44,13 +45,17 @@ If you just want to install dependencies without the package:
 
 ```bash
 # Install dependencies only
-python3 -m pip install textual rich pydantic pydantic-settings httpx aiofiles numpy
+python3 -m pip install textual rich pydantic pydantic-settings httpx aiofiles numpy --user
 
 # Run with Python directly
 python3 main.py
 ```
 
-**Note:** If you encounter `ModuleNotFoundError`, make sure you're using the same Python where you installed the dependencies
+**Note:** If `roundtable` command is not found after installation, you may need to add `~/.local/bin` to your PATH:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+Add this to your `~/.zshrc` (macOS) or `~/.bashrc` (Linux) to make it permanent.
 
 ## Configuration
 
