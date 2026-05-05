@@ -5,6 +5,10 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 ## Quick Start
 
 ```bash
+# Clone the repository
+git clone https://github.com/ch4bes/roundtable.git
+cd roundtable
+
 # Install
 pip install -e .
 
