@@ -85,8 +85,20 @@ class DiscussionOrchestrator:
     ) -> str:
         context_mode = self.config.context.mode
 
+        # Helper to get human responses for a range of rounds
+        def get_human_responses_for_rounds(start_round: int, end_round: int) -> list:
+            human_responses = []
+            for r in range(start_round, end_round + 1):
+                round_humans = self.session.get_round_human_responses(r)
+                human_responses.extend(round_humans)
+            return human_responses
+
         if context_mode == "full":
-            all_responses = self.session.responses
+            model_responses = self.session.responses
+            # Get all human responses
+            max_round = model_responses[-1].round if model_responses else 0
+            human_responses = get_human_responses_for_rounds(1, max_round)
+            all_responses = model_responses + human_responses
             if all_responses:
                 context_text = "\n\n".join(
                     f"### {r.model} (Round {r.round}):\n{r.content}" for r in all_responses
@@ -112,7 +124,9 @@ class DiscussionOrchestrator:
             if n_rounds > 0 and self.session.responses:
                 current_round = self.session.responses[-1].round
                 start_round = max(1, current_round - n_rounds + 1)
-                recent_responses = [r for r in self.session.responses if r.round >= start_round]
+                recent_model_responses = [r for r in self.session.responses if r.round >= start_round]
+                recent_human_responses = get_human_responses_for_rounds(start_round, current_round)
+                recent_responses = recent_model_responses + recent_human_responses
             else:
                 recent_responses = []
             latest_attributed = self.session.get_latest_attributed_summary()
@@ -129,7 +143,8 @@ class DiscussionOrchestrator:
                     f"CONSENSUS: {latest_attributed.consensus_assessment}"
                 )
             if recent_responses:
-                context_text = "\n\n".join(f"### {r.model}:\n{r.content}" for r in recent_responses)
+                context_text = "\n\n".join(f"### {r.model}:
+{r.content}" for r in recent_responses)
                 context_parts.append(f"=== RECENT RESPONSES ===\n{context_text}")
 
             if context_parts and round_num > 1:
