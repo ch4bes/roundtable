@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Automatically configure roundtable with your best available Ollama models."""
+"""Automatically configure roundtable with your best available Ollama models.
+
+Four levels of configuration:
+- Basic: Just select models and moderator (quick start)
+- Standard: Common discussion options (recommended)
+- Advanced: Context and discussion flow options
+- All: Every configuration option
+"""
 
 import json
 import subprocess
@@ -188,6 +195,27 @@ def prompt_yes_no(prompt_text: str, default: bool) -> bool:
     return default
 
 
+def select_from_options(prompt_text: str, options: list[tuple[str, str]], default_idx: int = 0) -> str:
+    """Prompt user to select from a list of options."""
+    print(f"\n{prompt_text}")
+    for i, (value, description) in enumerate(options, 1):
+        marker = " (default)" if i - 1 == default_idx else ""
+        print(f"  {i}. {value} - {description}{marker}")
+    
+    while True:
+        user_input = input(f"Selection (1-{len(options)}): ").strip()
+        if user_input == "":
+            return options[default_idx][0]
+        try:
+            idx = int(user_input) - 1
+            if 0 <= idx < len(options):
+                return options[idx][0]
+            else:
+                print(f"  Please enter a number between 1 and {len(options)}")
+        except ValueError:
+            print("  Please enter a number from the list.")
+
+
 def select_moderator(all_models: list[dict]) -> dict:
     """Let user select a moderator from all available Ollama models."""
     print("\nAll available models for moderator selection:")
@@ -210,114 +238,368 @@ def select_moderator(all_models: list[dict]) -> dict:
             print("  Please enter a number from the list.")
 
 
-def update_config():
-    """Auto-configure roundtable with best available models."""
-    print("Scanning Ollama models...")
-    all_models = get_ollama_models()
+def configure_basic(all_models: list[dict]) -> dict:
+    """Basic configuration - model selection."""
+    print("\n" + "=" * 50)
+    print("STEP 1: SELECT MODELS")
+    print("=" * 50)
+    
+    # Select participants
+    selected = select_models(all_models)
+    
+    # Select moderator
+    moderator = select_moderator(all_models)
+    
+    return {
+        "models": selected,
+        "moderator": moderator,
+    }
 
+
+def configure_standard(all_models: list[dict], basic_result: dict) -> dict:
+    """Standard configuration - discussion settings."""
+    print("\n" + "=" * 50)
+    print("STEP 2: DISCUSSION SETTINGS")
+    print("=" * 50)
+    
+    max_rounds = prompt_with_default("Max discussion rounds?", 6)
+    consensus_threshold = prompt_float_with_default("Consensus threshold (0-1)?", 0.75)
+    human_enabled = prompt_yes_no("Allow human participation?", True)
+    
+    return {
+        "max_rounds": max_rounds,
+        "consensus_threshold": consensus_threshold,
+        "human_enabled": human_enabled,
+    }
+
+
+def configure_advanced(standard_result: dict) -> dict:
+    """Advanced configuration - context mode and discussion flow."""
+    print("\n" + "=" * 50)
+    print("STEP 3: CONTEXT & FLOW")
+    print("=" * 50)
+    
+    # Context mode
+    context_mode = select_from_options(
+        "What should models see when responding?",
+        [
+            ("summary_only", "Moderator summary only (recommended)"),
+            ("summary_plus_last_n", "Summary + last N responses"),
+            ("full", "Full discussion history"),
+        ],
+        default_idx=0
+    )
+    
+    last_n = 2
+    if context_mode == "summary_plus_last_n":
+        last_n = prompt_with_default("How many recent responses to include?", 2)
+    
+    # Discussion flow
+    rotation = select_from_options(
+        "Model response order?",
+        [
+            ("sequential", "Rotate through list each round"),
+            ("random", "Shuffle order each round"),
+            ("fixed", "Same order every round"),
+        ],
+        default_idx=0
+    )
+    
+    final_review = prompt_yes_no("Generate final review when consensus reached?", True)
+    
+    return {
+        "context_mode": context_mode,
+        "last_n": last_n,
+        "rotation": rotation,
+        "final_review": final_review,
+    }
+
+
+def configure_all(advanced_result: dict) -> dict:
+    """All options - model params, consensus, and storage."""
+    print("\n" + "=" * 50)
+    print("STEP 4: ADVANCED OPTIONS")
+    print("=" * 50)
+    
+    # Model parameters
+    print("\n--- Model Parameters ---")
+    temperature = prompt_float_with_default("Participant temperature (0-2)?", 0.7)
+    max_tokens = prompt_with_default("Max tokens per response?", 2048)
+    context_window = prompt_with_default("Context window size?", 32768)
+    mod_temp = prompt_float_with_default("Moderator temperature?", 0.5)
+    
+    # Consensus settings
+    print("\n--- Consensus ---")
+    consensus_mode = select_from_options(
+        "How should consensus be determined?",
+        [
+            ("moderator_decides", "LLM moderator analyzes and decides"),
+            ("programmatic_decides", "Program calculates from similarity"),
+        ],
+        default_idx=0
+    )
+    
+    consensus_method = select_from_options(
+        "Similarity method?",
+        [
+            ("clustering", "Clustering-based (flexible)"),
+            ("pairwise", "Pairwise all-or-nothing (strict)"),
+        ],
+        default_idx=0
+    )
+    
+    strictness = select_from_options(
+        "Consensus strictness?",
+        [
+            ("main_point", "Main point agreement (lenient)"),
+            ("full", "Full agreement required (strict)"),
+        ],
+        default_idx=0
+    )
+    
+    # Only ask about thresholds if clustering
+    if consensus_method == "clustering":
+        agree_reached = prompt_float_with_default(
+            "Similarity threshold when moderator says REACHED?", 0.50
+        )
+        agree_not_reached = prompt_float_with_default(
+            "Similarity threshold when moderator says NOT REACHED?", 0.75
+        )
+        reprompt_pct = prompt_float_with_default(
+            "Agreement % to reprompt moderator?", 0.70
+        )
+    else:
+        agree_reached = 0.50
+        agree_not_reached = 0.75
+        reprompt_pct = 0.70
+    
+    # Storage
+    print("\n--- Storage ---")
+    sessions_dir = input("Sessions directory? (default: ./sessions): ").strip() or "./sessions"
+    auto_save = prompt_yes_no("Auto-save sessions?", True)
+    export_fmt = select_from_options(
+        "Export format?",
+        [
+            ("md", "Markdown"),
+            ("json", "JSON"),
+        ],
+        default_idx=0
+    )
+    
+    # Human customization
+    print("\n--- Human Participant ---")
+    human_prompt = input(
+        "Human prompt template? (default: 'Share your perspective on: {prompt}'): "
+    ).strip() or "Share your perspective on: {prompt}"
+    human_name = input("Human display name? (default: Human): ").strip() or "Human"
+    
+    return {
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "num_ctx": context_window,
+        "moderator_temp": mod_temp,
+        "consensus_mode": consensus_mode,
+        "consensus_method": consensus_method,
+        "strictness": strictness,
+        "agree_reached": agree_reached,
+        "agree_not_reached": agree_not_reached,
+        "reprompt_pct": reprompt_pct,
+        "sessions_dir": sessions_dir,
+        "auto_save": auto_save,
+        "export_fmt": export_fmt,
+        "human_prompt": human_prompt,
+        "human_name": human_name,
+    }
+
+
+def update_config():
+    """Auto-configure roundtable with guided setup."""
+    print("\n" + "=" * 60)
+    print("  ROUNDTABLE CONFIGURATION WIZARD")
+    print("=" * 60)
+    print("\nI'll help you set up your roundtable discussion.")
+    print("\nChoose your configuration level:")
+    print("  1. Basic - Select models and moderator")
+    print("  2. Standard - Basic + rounds, consensus, human")
+    print("  3. Advanced - Standard + context mode, flow")
+    print("  4. All - Everything (all options)")
+    
+    while True:
+        level = input("\nChoose level (1-4): ").strip()
+        if level in ["1", "2", "3", "4"]:
+            break
+        print("  Please enter 1, 2, 3, or 4")
+    
+    # Scan models
+    print("\nScanning Ollama models...")
+    all_models = get_ollama_models()
     if not all_models:
         print("✗ No models found. Make sure Ollama is running.")
         return False
-
+    
     print(f"✓ Found {len(all_models)} models\n")
-
-    # Interactive prompts for key configuration
-    max_rounds = prompt_with_default("Max discussion rounds?", 10)
-    consensus_threshold = prompt_float_with_default("Consensus threshold?", 0.75)
-    timeout = prompt_with_default("Ollama timeout in seconds?", 300)
-    human_participation = prompt_yes_no("Do you want to participate in the discussion?", True)
-
-    # Select models (manual or fallback to auto-diverse)
-    selected = select_models(all_models)
-    moderator = select_moderator(all_models)
-    embedding_model = has_embedding_model(all_models)
-
-    print("\n" + "=" * 50)
-    print("Selected models for roundtable:")
-    print("=" * 50)
-    for i, model in enumerate(selected, 1):
-        role = "Moderator" if model["name"] == moderator["name"] else "Participant"
-        size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
-        print(f"  {i}. {model['name']} ({size}) - {role}")
-
-    print("\n" + "=" * 50)
-    print("Moderator:")
-    print("=" * 50)
-    mod_size = f"{moderator['size_gb']:.1f} GB" if moderator["size_gb"] > 0 else "cloud"
-    print(f"  {moderator['name']} ({mod_size})")
-    if moderator not in selected:
-        print("  (Not included as a participant)")
-
-    if embedding_model:
-        print(f"\n✓ Embedding model found: {embedding_model}")
+    
+    # Step 1: Basic (always required)
+    basic_result = configure_basic(all_models)
+    
+    # Step 2: Standard
+    if level in ["2", "3", "4"]:
+        standard_result = configure_standard(all_models, basic_result)
     else:
-        print("\n⚠ No embedding model found")
-        print("  Install with: ollama pull qwen3-embedding:8b")
-        print("  (Will use fallback text-based similarity)")
-
+        standard_result = {
+            "max_rounds": 6,
+            "consensus_threshold": 0.75,
+            "human_enabled": True,
+        }
+    
+    # Step 3: Advanced
+    if level in ["3", "4"]:
+        advanced_result = configure_advanced(standard_result)
+    else:
+        advanced_result = {
+            "context_mode": "summary_only",
+            "last_n": 2,
+            "rotation": "sequential",
+            "final_review": True,
+        }
+    
+    # Step 4: All
+    if level == "4":
+        all_result = configure_all(advanced_result)
+    else:
+        all_result = {
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "num_ctx": 32768,
+            "moderator_temp": 0.5,
+            "consensus_mode": "moderator_decides",
+            "consensus_method": "clustering",
+            "strictness": "main_point",
+            "agree_reached": 0.50,
+            "agree_not_reached": 0.75,
+            "reprompt_pct": 0.70,
+            "sessions_dir": "./sessions",
+            "auto_save": True,
+            "export_fmt": "md",
+            "human_prompt": "Share your perspective on: {prompt}",
+            "human_name": "Human",
+        }
+    
+    # Build config
+    selected = basic_result["models"]
+    moderator = basic_result["moderator"]
+    embedding_model = has_embedding_model(all_models)
+    
     config = {
         "ollama": {
             "base_url": "http://localhost:11434",
-            "timeout": timeout
+            "timeout": 300
         },
         "models": [
-            {"name": m["name"], "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768}
+            {
+                "name": m["name"],
+                "temperature": all_result["temperature"],
+                "max_tokens": all_result["max_tokens"],
+                "num_ctx": all_result["num_ctx"],
+            }
             for m in selected
         ],
         "moderator": {
             "name": moderator["name"],
-            "temperature": 0.5,
-            "max_tokens": 2048,
-            "num_ctx": 32768
+            "temperature": all_result["moderator_temp"],
+            "max_tokens": all_result["max_tokens"],
+            "num_ctx": all_result["num_ctx"],
         },
         "discussion": {
-            "max_rounds": max_rounds,
-            "consensus_threshold": consensus_threshold,
-            "consensus_method": "clustering",
-            "rotation_order": "sequential"
+            "max_rounds": standard_result["max_rounds"],
+            "consensus_threshold": standard_result["consensus_threshold"],
+            "consensus_method": all_result["consensus_method"],
+            "rotation_order": advanced_result["rotation"],
+            "final_review_enabled": advanced_result["final_review"],
+            "consensus_agreement_when_reached": all_result["agree_reached"],
+            "consensus_agreement_when_not_reached": all_result["agree_not_reached"],
+            "reprompt_agreement_threshold": all_result["reprompt_pct"],
         },
         "context": {
-            "mode": "summary_only",
-            "last_n_responses": 2
+            "mode": advanced_result["context_mode"],
+            "last_n_responses": advanced_result["last_n"],
         },
         "storage": {
-            "sessions_dir": "./sessions",
-            "auto_save": True,
-            "export_format": "md"
+            "sessions_dir": all_result["sessions_dir"],
+            "auto_save": all_result["auto_save"],
+            "export_format": all_result["export_fmt"],
         },
         "default_prompt": "",
         "embeddings": {
             "model": embedding_model if embedding_model else "qwen3-embedding:8b"
         },
         "human_participant": {
-            "enabled": human_participation,
-            "prompt": "Share your perspective on: {prompt}",
-            "display_name": "Human"
+            "enabled": standard_result["human_enabled"],
+            "prompt": all_result["human_prompt"],
+            "display_name": all_result["human_name"],
         },
         "consensus": {
-            "mode": "moderator_decides",
-            "threshold": 0.75,
-            "method": "clustering"
-        }
+            "mode": all_result["consensus_mode"],
+            "threshold": standard_result["consensus_threshold"],
+            "method": all_result["consensus_method"],
+            "strictness": all_result["strictness"],
+        },
     }
-
+    
+    # Summary
+    level_names = {"1": "Basic", "2": "Standard", "3": "Advanced", "4": "All"}
+    print("\n" + "=" * 50)
+    print(f"CONFIGURATION COMPLETE ({level_names[level]})")
+    print("=" * 50)
+    print(f"\nParticipants ({len(selected)}):")
+    for model in selected:
+        size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
+        print(f"  - {model['name']} ({size})")
+    
+    print(f"\nModerator: {moderator['name']}")
+    print(f"Max rounds: {standard_result['max_rounds']}")
+    print(f"Consensus: {standard_result['consensus_threshold']} ({all_result['consensus_method']})")
+    print(f"Context: {advanced_result['context_mode'].replace('_', ' ')}")
+    print(f"Human: {'Yes' if standard_result['human_enabled'] else 'No'}")
+    
+    if embedding_model:
+        print(f"Embedding: {embedding_model}")
+    else:
+        print("\n⚠ No embedding model - using fallback similarity")
+    
+    # Write files
     config_path = Path("config.json")
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
-
-    # Generate CONFIGURED_MODELS.md
-    generate_configured_models_md(selected, moderator, 0.5, embedding_model, max_rounds, consensus_threshold)
-
-    print(f"\n✓ Updated {config_path}")
-    print("\nReady to start! Run: roundtable")
-
+    
+    generate_configured_models_md(
+        selected, moderator,
+        all_result["moderator_temp"],
+        embedding_model,
+        standard_result["max_rounds"],
+        standard_result["consensus_threshold"],
+        advanced_result["context_mode"],
+        all_result["strictness"],
+        level_names[level]
+    )
+    
+    print(f"\n✓ Saved to {config_path}")
+    print("\nReady! Run: roundtable")
+    
     return True
 
 
-def generate_configured_models_md(selected: list[dict], moderator: dict,
-                                   moderator_temp: float,
-                                   embedding_model: str | None, max_rounds: int,
-                                   consensus_threshold: float) -> None:
+def generate_configured_models_md(
+    selected: list[dict], 
+    moderator: dict,
+    moderator_temp: float,
+    embedding_model: str | None, 
+    max_rounds: int,
+    consensus_threshold: float,
+    context_mode: str,
+    strictness: str,
+    level: str,
+) -> None:
     """Generate CONFIGURED_MODELS.md based on current configuration."""
     moderator_name = moderator["name"]
 
@@ -328,13 +610,13 @@ def generate_configured_models_md(selected: list[dict], moderator: dict,
     lines.append("")
 
     model_count = len(selected)
-    lines.append(f"Your roundtable is configured with these **{model_count} models**:\n")
+    lines.append(f"Your roundtable is configured with **{model_count} models** ({level} setup):\n")
 
     lines.append("| Model | Size | Role |")
     lines.append("|-------|------|------|")
     for model in selected:
         size = f"{model['size_gb']:.1f} GB" if model['size_gb'] > 0 else "Cloud"
-        role = "Moderator" if model['name'] == moderator_name else "Participant"
+        role = "Moderator" if model["name"] == moderator_name else "Participant"
         lines.append(f"| `{model['name']}` | {size} | {role} |")
 
     lines.append("")
@@ -343,8 +625,8 @@ def generate_configured_models_md(selected: list[dict], moderator: dict,
     lines.append(f"- **Moderator**: {moderator_name} (temperature: {moderator_temp})")
     lines.append(f"- **Max Rounds**: {max_rounds}")
     lines.append(f"- **Consensus Threshold**: {consensus_threshold} ({int(consensus_threshold * 100)}% similarity)")
-    lines.append("- **Context Mode**: Summary only (models see moderator summary, not full transcript)")
-    lines.append("- **Consensus Method**: Clustering")
+    lines.append(f"- **Context Mode**: {context_mode.replace('_', ' ').title()}")
+    lines.append(f"- **Consensus Strictness**: {'Main point (lenient)' if strictness == 'main_point' else 'Full agreement (strict)'}")
     lines.append("- **Human Participant**: Enabled")
     lines.append("")
 
@@ -377,13 +659,12 @@ def generate_configured_models_md(selected: list[dict], moderator: dict,
     lines.append("")
     lines.append("## Reconfigure Models")
     lines.append("")
-    lines.append("To use different models from your collection:")
+    lines.append("To adjust your configuration:")
     lines.append("")
     lines.append(CODE_BLOCK_OPEN)
     lines.append("python scripts/auto_config.py")
     lines.append(CODE_BLOCK_CLOSE)
     lines.append("")
-    lines.append("This will scan your Ollama models and let you select which ones to use for your roundtable discussion.")
 
     md_path = Path("CONFIGURED_MODELS.md")
     with open(md_path, "w") as f:

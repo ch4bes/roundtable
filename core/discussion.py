@@ -70,10 +70,12 @@ class DiscussionOrchestrator:
         if self.config.discussion.rotation_order == "sequential":
             rotation = (round_num - 1) % len(model_names)
             return model_names[rotation:] + model_names[:rotation]
-        else:  # "random"
+        elif self.config.discussion.rotation_order == "random":
             shuffled = model_names.copy()
             random.shuffle(shuffled)
             return shuffled
+        else:  # "fixed" - same order every round
+            return model_names
 
     async def _build_context(
         self,
@@ -105,8 +107,14 @@ class DiscussionOrchestrator:
             return ParticipantPrompt.initial(self.session.prompt)
 
         elif context_mode == "summary_plus_last_n":
-            n = self.config.context.last_n_responses
-            recent_responses = self.session.responses[-n:] if n > 0 else []
+            n_rounds = self.config.context.last_n_responses
+            # Get last N rounds of responses, not N individual responses
+            if n_rounds > 0 and self.session.responses:
+                current_round = self.session.responses[-1].round
+                start_round = max(1, current_round - n_rounds + 1)
+                recent_responses = [r for r in self.session.responses if r.round >= start_round]
+            else:
+                recent_responses = []
             latest_attributed = self.session.get_latest_attributed_summary()
 
             context_parts = []
@@ -145,13 +153,33 @@ class DiscussionOrchestrator:
             prompt_text = self.config.human_participant.prompt.replace("{prompt}", self.session.prompt)
             
             latest_summary = self.session.get_latest_attributed_summary()
+            context_mode = self.config.context.mode
+            
+            # Get recent responses for context_mode summary_plus_last_n (last N rounds, not N responses)
+            n_rounds = self.config.context.last_n_responses if context_mode == "summary_plus_last_n" else 0
+            if n_rounds > 0 and self.session.responses:
+                # Get the last N rounds of responses
+                current_round = self.session.responses[-1].round if self.session.responses else 0
+                start_round = max(1, current_round - n_rounds + 1)
+                recent_responses = [r for r in self.session.responses if r.round >= start_round]
+            else:
+                recent_responses = []
+            
             if latest_summary and round_num > 1:
-                context_display = f"=== LATEST SUMMARY (Round {latest_summary.round}) ===\n"
+                context_display = f"=== MODERATOR SUMMARY (Round {latest_summary.round}) ===\n"
                 context_display += f"AGREEMENT: {latest_summary.agreement_analysis}\n\n"
                 context_display += f"CONSENSUS: {latest_summary.consensus_assessment}\n\n"
                 context_display += "Individual points:\n"
                 for model, points in latest_summary.individual_summaries.items():
                     context_display += f"  {model}: {points[0] if points else '(no points)'}\n"
+                
+                # Add recent responses if using summary_plus_last_n
+                if recent_responses:
+                    context_display += "\n=== RECENT RESPONSES ===\n"
+                    for r in recent_responses:
+                        # Show first 300 chars of each response
+                        content_preview = r.content[:300] + "..." if len(r.content) > 300 else r.content
+                        context_display += f"\n{r.model} (Round {r.round}):\n{content_preview}\n"
             else:
                 context_display = context[:500] + "..." if len(context) > 500 else context
             

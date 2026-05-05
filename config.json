@@ -5,25 +5,25 @@
   },
   "models": [
     {
+      "name": "granite4.1:30b-q8_0",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "nemotron3:33b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "laguna-xs.2:q4_K_M",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
       "name": "qwen3.6:35b-a3b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "gemma4:26b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "gemma4:e4b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "gemma4:31b",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
@@ -33,40 +33,26 @@
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
-    },
-    {
-      "name": "qwen3.5:27b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "qwen3.5:35b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "qwen3:30b-thinking",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
     }
   ],
   "moderator": {
-    "name": "qwen3.5:35b",
+    "name": "granite4.1:30b-q8_0",
     "temperature": 0.5,
     "max_tokens": 2048,
     "num_ctx": 32768
   },
   "discussion": {
-    "max_rounds": 6,
+    "max_rounds": 4,
     "consensus_threshold": 0.75,
     "consensus_method": "clustering",
-    "rotation_order": "sequential"
+    "rotation_order": "sequential",
+    "final_review_enabled": true,
+    "consensus_agreement_when_reached": 0.5,
+    "consensus_agreement_when_not_reached": 0.75,
+    "reprompt_agreement_threshold": 0.7
   },
   "context": {
-    "mode": "summary_only",
+    "mode": "summary_plus_last_n",
     "last_n_responses": 2
   },
   "storage": {

@@ -32,7 +32,7 @@ class DiscussionConfig(BaseModel):
     max_rounds: int = Field(default=10, gt=0)
     consensus_threshold: float = Field(default=0.75, ge=0, le=1)
     consensus_method: Literal["pairwise", "clustering"] = "clustering"
-    rotation_order: Literal["sequential", "random"] = "sequential"
+    rotation_order: Literal["sequential", "random", "fixed"] = "sequential"
     final_review_enabled: bool = True
     
     # Embedding-based similarity thresholds for _check_consensus:
