@@ -12,10 +12,10 @@ cd roundtable
 # Install
 pip install -e .
 
-# Run (auto-config runs automatically on first run)
+# Run a discussion from TUI (experimental and untested)
 roundtable
 
-# Or run a discussion from CLI
+# Run a discussion from CLI
 roundtable --prompt "What is the best approach to AI safety?"
 ```
 
