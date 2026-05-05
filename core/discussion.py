@@ -644,6 +644,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         temperature=model_config_obj.temperature,
                         max_tokens=model_config_obj.max_tokens,
                         num_ctx=model_config_obj.num_ctx,
+                        images=self.session.images,
                     )
                     response_text = generated
 

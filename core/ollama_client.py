@@ -1,6 +1,8 @@
+import base64
 import httpx
 import json
 import sys
+from pathlib import Path
 from typing import AsyncGenerator
 from dataclasses import dataclass
 
@@ -48,6 +50,7 @@ class OllamaClient:
         max_tokens: int = 1024,
         num_ctx: int = 8192,
         stream: bool = False,
+        images: list[str] | None = None,
     ) -> GenerationResponse | AsyncGenerator[str, None]:
         client = await self._get_client()
         payload = {
@@ -63,6 +66,20 @@ class OllamaClient:
         }
         if system:
             payload["system"] = system
+
+        if images:
+            # images can be file paths (will be read and base64 encoded) or base64 strings
+            encoded_images = []
+            for img in images:
+                if Path(img).exists():
+                    # It's a file path, read and encode
+                    with open(img, "rb") as f:
+                        encoded_images.append(base64.b64encode(f.read()).decode("utf-8"))
+                else:
+                    # Assume it's already base64 encoded
+                    encoded_images.append(img)
+            if encoded_images:
+                payload["images"] = encoded_images
 
         if stream:
             return self._stream_generate(client, payload)

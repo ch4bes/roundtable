@@ -39,6 +39,7 @@ class AttributedSummary:
 class SessionData:
     id: str
     prompt: str
+    images: list[str]  # List of image file paths or base64 encoded images
     config_snapshot: dict
     created_at: str
     updated_at: str
@@ -60,9 +61,11 @@ class Session:
         prompt: str,
         config: dict,
         session_id: str | None = None,
+        images: list[str] | None = None,
     ):
         self.id = session_id or str(uuid.uuid4())
         self.prompt = prompt
+        self.images = images or []
         self.config_snapshot = config
         self.created_at = datetime.now().isoformat()
         self.updated_at = self.created_at
@@ -203,6 +206,7 @@ class Session:
         return SessionData(
             id=self.id,
             prompt=self.prompt,
+            images=self.images,
             config_snapshot=self.config_snapshot,
             created_at=self.created_at,
             updated_at=self.updated_at,
@@ -245,6 +249,7 @@ class Session:
             prompt=data["prompt"],
             config=data.get("config_snapshot", {}),
             session_id=data["id"],
+            images=data.get("images", []),
         )
         session.created_at = data["created_at"]
         session.updated_at = data["updated_at"]

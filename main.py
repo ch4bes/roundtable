@@ -23,6 +23,8 @@ Examples:
   roundtable                          # Launch TUI
   roundtable --prompt "..."           # Start discussion with prompt
   roundtable --prompt-file topic.txt  # Start discussion from file
+  roundtable -p "Describe this image" -i image.jpg  # With image(s)
+  roundtable -i img1.png -i img2.jpg  # Multiple images
   roundtable --list-sessions          # List saved sessions
   roundtable --resume SESSION_ID      # Resume a session
   roundtable --export SESSION_ID      # Export a session
@@ -51,6 +53,14 @@ Examples:
         type=str,
         default=None,
         help="File containing discussion prompt",
+    )
+
+    parser.add_argument(
+        "--image",
+        "-i",
+        action="append",
+        default=[],
+        help="Image file to include in the discussion (can be specified multiple times)",
     )
 
     parser.add_argument(
@@ -176,7 +186,7 @@ async def export_session(
     print(f"Exported session to: {output_path}")
 
 
-async def run_cli_discussion(config: Config, prompt: str):
+async def run_cli_discussion(config: Config, prompt: str, images: list[str] | None = None):
     from core import DiscussionOrchestrator
     from storage import Session
     from core.ollama_client import OllamaClient
@@ -209,7 +219,7 @@ async def run_cli_discussion(config: Config, prompt: str):
     print(f"Consensus threshold: {config.discussion.consensus_threshold}")
     print()
 
-    session = Session(prompt=prompt, config=config.model_dump())
+    session = Session(prompt=prompt, config=config.model_dump(), images=images or [])
     orchestrator = DiscussionOrchestrator(
         config=config,
         session=session,
@@ -337,7 +347,7 @@ def main():
             sys.exit(1)
 
     if prompt and not args.tui:
-        asyncio.run(run_cli_discussion(config, prompt))
+        asyncio.run(run_cli_discussion(config, prompt, images=args.image))
     else:
         from tui.app import run_tui
 

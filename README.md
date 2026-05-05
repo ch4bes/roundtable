@@ -124,6 +124,10 @@ roundtable -f discussion.txt
 roundtable --prompt "Discuss the following article:" --prompt-file article.txt
 roundtable -p "Your question here" -f topic.txt  # short forms
 
+# Include images in discussion (requires vision model like llava or llama3.2-vision)
+roundtable -p "Describe this image" -i image.jpg
+roundtable -i img1.png -i img2.jpg  # multiple images
+
 # Force TUI mode
 roundtable --tui
 
