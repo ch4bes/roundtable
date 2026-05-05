@@ -293,7 +293,7 @@ def configure_advanced(standard_result: dict) -> dict:
     last_n = 2
     preview_length = 800  # default
     if context_mode == "summary_plus_last_n":
-        last_n = prompt_with_default("How many recent responses to include?", 2)
+        last_n = prompt_with_default("How many recent rounds of responses to include?", 2)
         show_full = prompt_yes_no("Show full responses (no truncation)?", False)
         if show_full:
             preview_length = 0  # 0 means show all
