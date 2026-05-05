@@ -2,10 +2,26 @@
 
 A CLI/TUI application for running multi-model discussions with local LLMs via Ollama. Models respond to a prompt sequentially, consider each other's responses, and iterate until consensus is reached or max rounds are completed.
 
+## Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Run the configuration wizard (select your models)
+python scripts/auto_config.py
+
+# Launch TUI
+roundtable
+
+# Or run a discussion from CLI
+roundtable --prompt "What is the best approach to AI safety?"
+```
+
 ## Features
 
 - **Multi-Model Discussions**: Run discussions between multiple LLMs
-- **Sequential Response**: Models respond in order, with rotation each round
+- **Sequential Response**: Models respond in order, with configurable rotation each round
 - **Consensus Detection**: Semantic similarity-based consensus using embeddings
 - **Moderator Summary**: LLM-generated summaries after each round
 - **TUI Interface**: Live terminal UI with real-time updates
@@ -27,7 +43,7 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 
 ```bash
 # Clone the repository
-git clone https://github.com/example/roundtable.git
+git clone https://github.com/ch4bes/roundtable.git
 cd roundtable
 
 # Create a virtual environment
@@ -59,7 +75,7 @@ If you prefer not to use a virtual environment:
 
 ```bash
 # Clone the repository
-git clone https://github.com/example/roundtable.git
+git clone https://github.com/ch4bes/roundtable.git
 cd roundtable
 
 # Install the package in editable mode
@@ -74,6 +90,25 @@ Add this to your `~/.zshrc` (macOS) or `~/.bashrc` (Linux) to make it permanent.
 
 ## Configuration
 
+### Auto-Config Wizard
+
+The easiest way to configure roundtable is to use the built-in configuration wizard:
+
+```bash
+python scripts/auto_config.py
+```
+
+The wizard guides you through 4 levels of configuration:
+
+| Level | Description |
+|-------|-------------|
+| **Basic** | Select models and moderator |
+| **Standard** | Basic + max rounds, consensus threshold, human participation |
+| **Advanced** | Standard + context mode, discussion flow, final review |
+| **All** | Everything - model parameters, consensus settings, storage, and more |
+
+### Manual Configuration
+
 Edit `config.json` to customize your setup:
 
 ```json
@@ -84,11 +119,11 @@ Edit `config.json` to customize your setup:
   },
   "models": [
     {"name": "qwen3.6:35b-a3b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768},
-    {"name": "qwen3.5:35b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768},
-    {"name": "gemma4:31b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768}
+    {"name": "gemma4:26b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768},
+    {"name": "qwen3.5:27b", "temperature": 0.7, "max_tokens": 2048, "num_ctx": 32768}
   ],
   "moderator": {
-    "name": "qwen3.6:35b-a3b",
+    "name": "qwen3.5:35b",
     "temperature": 0.5,
     "max_tokens": 2048,
     "num_ctx": 32768
@@ -97,8 +132,18 @@ Edit `config.json` to customize your setup:
     "model": "qwen3-embedding:8b"
   },
   "discussion": {
-    "max_rounds": 10,
-    "consensus_threshold": 0.75
+    "max_rounds": 6,
+    "consensus_threshold": 0.75,
+    "consensus_method": "clustering",
+    "rotation_order": "fixed"
+  },
+  "context": {
+    "mode": "summary_plus_last_n",
+    "last_n_responses": 2,
+    "response_preview_length": 800
+  },
+  "human_participant": {
+    "enabled": true
   }
 }
 ```
@@ -153,6 +198,7 @@ roundtable -c /path/to/config.json
 - `Space`: Pause/Resume
 - `Ctrl+Q`: Stop discussion
 - `Ctrl+C`: Quit
+- `H`: Add human response (during discussion)
 
 ## How It Works
 
@@ -179,7 +225,7 @@ roundtable/
 ├── prompts/        # Prompt templates
 ├── scripts/        # Utility scripts (auto_config, update_config)
 ├── sessions/       # Saved discussions
-└── tests/          # Test suite (153 tests)
+└── tests/          # Test suite
 ```
 
 ## Examples
@@ -228,10 +274,14 @@ ollama pull [model]
 Configure how much history is included in each model's context:
 
 ```json
-"context_mode": "full"        // All responses and summaries
-"context_mode": "last_summaries"  // Only recent summaries
-"context_mode": "last_round"  // Only current round
-"context_mode": "compact"     // Compressed summary
+"context_mode": "full"                 // All responses from all rounds
+"context_mode": "summary_only"          // Only moderator summary (default)
+"context_mode": "summary_plus_last_n"  // Summary + last N rounds of responses
+```
+
+When using `summary_plus_last_n`, you can also set:
+```json
+"last_n_responses": 2  // Number of recent rounds to include
 ```
 
 ### Rotation Strategies
@@ -239,14 +289,18 @@ Configure how much history is included in each model's context:
 Control the order models respond each round:
 
 ```json
-"rotation_strategy": "sequential"  // Rotate in list order
-"rotation_strategy": "random"      // Random shuffle each round
-"rotation_strategy": "fixed"       // Always same order
+"rotation_order": "sequential"  // Rotate through list each round
+"rotation_order": "random"      // Shuffle order each round
+"rotation_order": "fixed"        // Same order every round
 ```
 
 ### Human Participation
 
-In TUI mode, press `H` during a discussion to add a human response to the round. Humans can participate in consensus detection.
+When human participation is enabled, humans can join the discussion:
+- In CLI mode: Human is prompted after all models respond each round
+- In TUI mode: Press `H` during a discussion to add a human response
+
+Humans participate in consensus detection alongside the models.
 
 ## Testing
 
@@ -255,8 +309,6 @@ Run the test suite:
 ```bash
 pytest
 ```
-
-153 tests covering core modules, prompts, session management, export, and more.
 
 ## License
 
