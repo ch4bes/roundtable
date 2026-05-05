@@ -277,6 +277,21 @@ async def run_cli_discussion(config: Config, prompt: str):
 def main():
     args = parse_args()
 
+    # Determine config file path
+    config_path = args.config if args.config else "config.json"
+
+    # Check if config exists, if not run auto_config
+    if not Path(config_path).exists():
+        print(f"No config file found at {config_path}")
+        print("Running auto-configuration...")
+        print()
+        import subprocess
+        result = subprocess.run(["python", "scripts/auto_config.py"], cwd=Path(__file__).parent)
+        if result.returncode != 0:
+            print("Auto-configuration failed. Please run manually: python scripts/auto_config.py")
+            sys.exit(1)
+        print()
+
     try:
         config = Config.load(args.config)
     except Exception as e:
