@@ -143,8 +143,7 @@ class DiscussionOrchestrator:
                     f"CONSENSUS: {latest_attributed.consensus_assessment}"
                 )
             if recent_responses:
-                context_text = "\n\n".join(f"### {r.model}:
-{r.content}" for r in recent_responses)
+                context_text = "\n\n".join(f"### {r.model}:\n{r.content}" for r in recent_responses)
                 context_parts.append(f"=== RECENT RESPONSES ===\n{context_text}")
 
             if context_parts and round_num > 1:
