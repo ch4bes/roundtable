@@ -174,6 +174,20 @@ def prompt_float_with_default(prompt_text: str, default: float) -> float:
         return default
 
 
+def prompt_yes_no(prompt_text: str, default: bool) -> bool:
+    """Prompt user with a yes/no question, returning boolean."""
+    default_str = "Y" if default else "N"
+    user_input = input(f"{prompt_text} (Y/n, default: {default_str}): ").strip().lower()
+    if user_input == "":
+        return default
+    if user_input in ["y", "yes"]:
+        return True
+    if user_input in ["n", "no"]:
+        return False
+    print(f"  Invalid input, using default: {default_str}")
+    return default
+
+
 def select_moderator(all_models: list[dict]) -> dict:
     """Let user select a moderator from all available Ollama models."""
     print("\nAll available models for moderator selection:")
@@ -211,6 +225,7 @@ def update_config():
     max_rounds = prompt_with_default("Max discussion rounds?", 10)
     consensus_threshold = prompt_float_with_default("Consensus threshold?", 0.75)
     timeout = prompt_with_default("Ollama timeout in seconds?", 300)
+    human_participation = prompt_yes_no("Do you want to participate in the discussion?", True)
 
     # Select models (manual or fallback to auto-diverse)
     selected = select_models(all_models)
@@ -275,7 +290,7 @@ def update_config():
             "model": embedding_model if embedding_model else "qwen3-embedding:8b"
         },
         "human_participant": {
-            "enabled": True,
+            "enabled": human_participation,
             "prompt": "Share your perspective on: {prompt}",
             "display_name": "Human"
         },
