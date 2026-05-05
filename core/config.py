@@ -53,7 +53,7 @@ class DiscussionConfig(BaseModel):
 class ContextConfig(BaseModel):
     mode: Literal["full", "summary_only", "summary_plus_last_n"] = "summary_only"
     last_n_responses: int = Field(default=2, gt=0)
-    response_preview_length: int = Field(default=800, gt=0, description="Max chars to show when displaying response previews. Use 0 for all characters.")
+    response_preview_length: int = Field(default=800, ge=0, description="Max chars to show when displaying response previews. Use 0 for all characters.")
 
 
 class StorageConfig(BaseModel):

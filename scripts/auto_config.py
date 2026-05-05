@@ -261,6 +261,7 @@ def configure_standard(all_models: list[dict], basic_result: dict) -> dict:
     print("\n" + "=" * 50)
     print("STEP 2: DISCUSSION SETTINGS")
     print("=" * 50)
+    print("Press Enter to accept any default values shown in parentheses.")
     
     max_rounds = prompt_with_default("Max discussion rounds?", 6)
     consensus_threshold = prompt_float_with_default("Consensus threshold (0-1)?", 0.75)
@@ -283,11 +284,11 @@ def configure_advanced(standard_result: dict) -> dict:
     context_mode = select_from_options(
         "What should models see when responding?",
         [
-            ("summary_only", "Moderator summary only (recommended)"),
-            ("summary_plus_last_n", "Summary + last N responses"),
+            ("summary_only", "Moderator summary only"),
+            ("summary_plus_last_n", "Summary + last N responses (default)"),
             ("full", "Full discussion history"),
         ],
-        default_idx=0
+        default_idx=1
     )
     
     last_n = 2
@@ -306,9 +307,9 @@ def configure_advanced(standard_result: dict) -> dict:
         [
             ("sequential", "Rotate through list each round"),
             ("random", "Shuffle order each round"),
-            ("fixed", "Same order every round"),
+            ("fixed", "Same order every round (default)"),
         ],
-        default_idx=0
+        default_idx=2
     )
     
     final_review = prompt_yes_no("Generate final review when consensus reached?", True)
@@ -464,10 +465,10 @@ def update_config():
         advanced_result = configure_advanced(standard_result)
     else:
         advanced_result = {
-            "context_mode": "summary_only",
+            "context_mode": "summary_plus_last_n",
             "last_n": 2,
             "preview_length": 800,
-            "rotation": "sequential",
+            "rotation": "fixed",
             "final_review": True,
         }
     
