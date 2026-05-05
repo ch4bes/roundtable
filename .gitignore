@@ -46,6 +46,7 @@ htmlcov/
 
 # Local config overrides
 config.local.json
+config.json
 
 # Generated/Local files
 uv.lock
