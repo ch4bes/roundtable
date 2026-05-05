@@ -311,7 +311,12 @@ def main():
     if args.prompt_file:
         try:
             with open(args.prompt_file, "r") as f:
-                prompt = f.read().strip()
+                file_content = f.read().strip()
+                if prompt:
+                    # Combine text prompt with file content
+                    prompt = f"{prompt}\n\n{file_content}"
+                else:
+                    prompt = file_content
         except Exception as e:
             print(f"Error reading prompt file: {e}", file=sys.stderr)
             sys.exit(1)

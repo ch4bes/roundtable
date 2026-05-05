@@ -120,6 +120,10 @@ roundtable --prompt "What is the meaning of life?"
 # Start from file
 roundtable -f discussion.txt
 
+# Combine prompt text with file content (joined with blank line)
+roundtable --prompt "Discuss the following article:" --prompt-file article.txt
+roundtable -p "Your question here" -f topic.txt  # short forms
+
 # Force TUI mode
 roundtable --tui
 
