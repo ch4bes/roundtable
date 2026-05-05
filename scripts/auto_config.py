@@ -291,8 +291,14 @@ def configure_advanced(standard_result: dict) -> dict:
     )
     
     last_n = 2
+    preview_length = 800  # default
     if context_mode == "summary_plus_last_n":
         last_n = prompt_with_default("How many recent responses to include?", 2)
+        show_full = prompt_yes_no("Show full responses (no truncation)?", False)
+        if show_full:
+            preview_length = 0  # 0 means show all
+        else:
+            preview_length = prompt_with_default("Characters to show per response?", 800)
     
     # Discussion flow
     rotation = select_from_options(
@@ -310,6 +316,7 @@ def configure_advanced(standard_result: dict) -> dict:
     return {
         "context_mode": context_mode,
         "last_n": last_n,
+        "preview_length": preview_length if context_mode == "summary_plus_last_n" else 800,
         "rotation": rotation,
         "final_review": final_review,
     }
@@ -459,6 +466,7 @@ def update_config():
         advanced_result = {
             "context_mode": "summary_only",
             "last_n": 2,
+            "preview_length": 800,
             "rotation": "sequential",
             "final_review": True,
         }
@@ -523,6 +531,7 @@ def update_config():
         "context": {
             "mode": advanced_result["context_mode"],
             "last_n_responses": advanced_result["last_n"],
+            "response_preview_length": advanced_result["preview_length"],
         },
         "storage": {
             "sessions_dir": all_result["sessions_dir"],

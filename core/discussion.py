@@ -175,10 +175,14 @@ class DiscussionOrchestrator:
                 
                 # Add recent responses if using summary_plus_last_n
                 if recent_responses:
+                    preview_length = self.config.context.response_preview_length
                     context_display += "\n=== RECENT RESPONSES ===\n"
                     for r in recent_responses:
-                        # Show first 300 chars of each response
-                        content_preview = r.content[:300] + "..." if len(r.content) > 300 else r.content
+                        # Show response: if preview_length is 0, show all; otherwise truncate
+                        if preview_length == 0:
+                            content_preview = r.content
+                        else:
+                            content_preview = r.content[:preview_length] + "..." if len(r.content) > preview_length else r.content
                         context_display += f"\n{r.model} (Round {r.round}):\n{content_preview}\n"
             else:
                 context_display = context[:500] + "..." if len(context) > 500 else context
