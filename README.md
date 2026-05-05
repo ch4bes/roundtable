@@ -12,10 +12,7 @@ cd roundtable
 # Install
 pip install -e .
 
-# Run the configuration wizard (select your models)
-python scripts/auto_config.py
-
-# Launch TUI
+# Run (auto-config runs automatically on first run)
 roundtable
 
 # Or run a discussion from CLI
