@@ -263,11 +263,13 @@ def configure_standard(all_models: list[dict], basic_result: dict) -> dict:
     print("=" * 50)
     print("Press Enter to accept any default values shown in parentheses.")
     
+    timeout = prompt_with_default("Ollama timeout (seconds)?", 300)
     max_rounds = prompt_with_default("Max discussion rounds?", 6)
     consensus_threshold = prompt_float_with_default("Consensus threshold (0-1)?", 0.75)
     human_enabled = prompt_yes_no("Allow human participation?", True)
     
     return {
+        "timeout": timeout,
         "max_rounds": max_rounds,
         "consensus_threshold": consensus_threshold,
         "human_enabled": human_enabled,
@@ -455,6 +457,7 @@ def update_config():
         standard_result = configure_standard(all_models, basic_result)
     else:
         standard_result = {
+            "timeout": 300,
             "max_rounds": 6,
             "consensus_threshold": 0.75,
             "human_enabled": True,
@@ -502,7 +505,7 @@ def update_config():
     config = {
         "ollama": {
             "base_url": "http://localhost:11434",
-            "timeout": 300
+            "timeout": standard_result["timeout"]
         },
         "models": [
             {
