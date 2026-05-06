@@ -234,6 +234,9 @@ class RoundtableApp(App):
             return
         self._show_prompt_screen()
 
+    def action_quit(self) -> None:
+        self.exit()
+
     def _safe_create_task(
         self,
         coro,
