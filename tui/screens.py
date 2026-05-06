@@ -24,6 +24,12 @@ class PromptScreen(ModalScreen):
         super().__init__(*args, **kwargs)
         self.config = config
 
+    def on_key(self, event):
+        if event.key == "ctrl+c":
+            self.app.exit()
+            return
+        super().on_key(event)
+
     def compose(self):
         yield Vertical(
             Static("Enter Discussion Prompt", classes="modal-title"),
