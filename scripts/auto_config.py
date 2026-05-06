@@ -79,9 +79,23 @@ def parse_size(size_str: str) -> float:
 
 
 def select_models(all_models: list[dict]) -> list[dict]:
-    """Let user manually select which models to include."""
-    print("\nAvailable models:")
-    for i, model in enumerate(all_models, 1):
+    """Let user manually select which models to include.
+    
+    Excludes embedding models since they cannot participate in text discussions.
+    """
+    # Filter out embedding models - they can't participate in text discussions
+    eligible_models = filter_out_embedding_models(all_models)
+    
+    if not eligible_models:
+        print("\n⚠ No eligible models found! All available models appear to be embedding models.")
+        print("  Please install a text-generation model: ollama pull <model-name>")
+        return []
+    
+    if len(eligible_models) < len(all_models):
+        print(f"\nNote: {len(all_models) - len(eligible_models)} embedding model(s) excluded from selection.")
+    
+    print("\nAvailable models (text-generation only):")
+    for i, model in enumerate(eligible_models, 1):
         size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
         print(f"  {i}. {model['name']} ({size})")
     
@@ -91,7 +105,7 @@ def select_models(all_models: list[dict]) -> list[dict]:
     
     if user_input == "" or user_input == "all":
         print("\nAuto-selecting diverse models...")
-        return select_diverse_models(all_models, count=3)
+        return select_diverse_models(eligible_models, count=3)
     
     # Parse selection: "1,3,5" or "1-4" or "1 3 5"
     selected = []
@@ -104,8 +118,8 @@ def select_models(all_models: list[dict]) -> list[dict]:
             try:
                 start, end = map(int, part.split("-"))
                 for idx in range(start, end + 1):
-                    if 1 <= idx <= len(all_models) and idx not in seen_indices:
-                        selected.append(all_models[idx - 1])
+                    if 1 <= idx <= len(eligible_models) and idx not in seen_indices:
+                        selected.append(eligible_models[idx - 1])
                         seen_indices.add(idx)
             except (ValueError, IndexError):
                 pass
@@ -113,15 +127,15 @@ def select_models(all_models: list[dict]) -> list[dict]:
             # Handle single number
             try:
                 idx = int(part)
-                if 1 <= idx <= len(all_models) and idx not in seen_indices:
-                    selected.append(all_models[idx - 1])
+                if 1 <= idx <= len(eligible_models) and idx not in seen_indices:
+                    selected.append(eligible_models[idx - 1])
                     seen_indices.add(idx)
             except (ValueError, IndexError):
                 pass
     
     if not selected:
         print("\nNo valid selection, auto-selecting diverse models...")
-        return select_diverse_models(all_models, count=3)
+        return select_diverse_models(eligible_models, count=3)
     
     return selected
 
@@ -155,6 +169,22 @@ def has_embedding_model(models: list[dict]) -> str | None:
         if any(kw in name_lower for kw in embedding_keywords):
             return model["name"]
     return None
+
+
+def is_embedding_model(model_name: str) -> bool:
+    """Check if a model name refers to an embedding-only model."""
+    name_lower = model_name.lower()
+    embedding_keywords = ["embed", "embedding"]
+    return any(kw in name_lower for kw in embedding_keywords)
+
+
+def filter_out_embedding_models(models: list[dict]) -> list[dict]:
+    """Remove embedding-only models from the list.
+    
+    Embedding models can only generate embeddings, not text, so they
+    cannot participate in roundtable discussions as participants or moderator.
+    """
+    return [m for m in models if not is_embedding_model(m["name"])]
 
 
 def prompt_with_default(prompt_text: str, default: int) -> int:
@@ -217,23 +247,37 @@ def select_from_options(prompt_text: str, options: list[tuple[str, str]], defaul
 
 
 def select_moderator(all_models: list[dict]) -> dict:
-    """Let user select a moderator from all available Ollama models."""
-    print("\nAll available models for moderator selection:")
-    for i, model in enumerate(all_models, 1):
+    """Let user select a moderator from available Ollama models.
+    
+    Excludes embedding models since they cannot generate text responses.
+    """
+    # Filter out embedding models - they can't generate text
+    eligible_models = filter_out_embedding_models(all_models)
+    
+    if not eligible_models:
+        print("\n⚠ No eligible models found for moderator!")
+        print("  Please install a text-generation model: ollama pull <model-name>")
+        return all_models[0]  # Return first model as fallback
+    
+    if len(eligible_models) < len(all_models):
+        print(f"\nNote: {len(all_models) - len(eligible_models)} embedding model(s) excluded from selection.")
+    
+    print("\nAvailable models for moderator (text-generation only):")
+    for i, model in enumerate(eligible_models, 1):
         size = f"{model['size_gb']:.1f} GB" if model["size_gb"] > 0 else "cloud"
         print(f"  {i}. {model['name']} ({size})")
     
     while True:
-        user_input = input(f"\nWhich model should be moderator? (1-{len(all_models)}): ").strip()
+        user_input = input(f"\nWhich model should be moderator? (1-{len(eligible_models)}): ").strip()
         if user_input == "":
-            print(f"  Defaulting to: {all_models[0]['name']}")
-            return all_models[0]
+            print(f"  Defaulting to: {eligible_models[0]['name']}")
+            return eligible_models[0]
         try:
             choice = int(user_input)
-            if 1 <= choice <= len(all_models):
-                return all_models[choice - 1]
+            if 1 <= choice <= len(eligible_models):
+                return eligible_models[choice - 1]
             else:
-                print(f"  Please enter a number between 1 and {len(all_models)}")
+                print(f"  Please enter a number between 1 and {len(eligible_models)}")
         except ValueError:
             print("  Please enter a number from the list.")
 

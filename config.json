@@ -1,15 +1,9 @@
 {
   "ollama": {
     "base_url": "http://localhost:11434",
-    "timeout": 300
+    "timeout": 600
   },
   "models": [
-    {
-      "name": "granite4.1:30b-q8_0",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
     {
       "name": "nemotron3:33b",
       "temperature": 0.7,
@@ -17,13 +11,19 @@
       "num_ctx": 32768
     },
     {
-      "name": "laguna-xs.2:q4_K_M",
+      "name": "qwen3.6:27b-coding-mxfp8",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
     },
     {
-      "name": "gemma4:e4b",
+      "name": "qwen3.6:27b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3.6:35b-a3b",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
@@ -33,10 +33,52 @@
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
+    },
+    {
+      "name": "qwen3.5:9b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3.5:35b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3.5:27b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3:30b-thinking",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3:30b-instruct",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3-coder:30b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "qwen3.6:35b-a3b-coding-mxfp8",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
     }
   ],
   "moderator": {
-    "name": "laguna-xs.2:q4_K_M",
+    "name": "nemotron3:33b",
     "temperature": 0.5,
     "max_tokens": 2048,
     "num_ctx": 32768

@@ -41,6 +41,14 @@ class OllamaClient:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
+    def _supports_think_param(self, model: str) -> bool:
+        """Check if the model supports the 'think' parameter.
+        
+        Qwen3 models support the think parameter, other models may not.
+        """
+        model_lower = model.lower()
+        return "qwen3" in model_lower or "qwen2.5" in model_lower
+
     async def generate(
         self,
         model: str,
@@ -57,13 +65,17 @@ class OllamaClient:
             "model": model,
             "prompt": prompt,
             "stream": stream,
-            "think": False,
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "num_ctx": num_ctx,
             },
         }
+        
+        # Only add 'think' parameter for models that support it (Qwen3)
+        if self._supports_think_param(model):
+            payload["think"] = False
+        
         if system:
             payload["system"] = system
 
@@ -84,8 +96,26 @@ class OllamaClient:
         if stream:
             return self._stream_generate(client, payload)
         else:
-            response = await client.post("/api/generate", json=payload)
-            response.raise_for_status()
+            try:
+                response = await client.post("/api/generate", json=payload)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Try to extract the error message from Ollama's response
+                error_msg = e.response.text
+                try:
+                    error_data = json.loads(error_msg)
+                    ollama_error = error_data.get("error", "Unknown error")
+                    raise RuntimeError(
+                        f"Ollama API error: {ollama_error}\n"
+                        f"Model: {model}\n"
+                        f"This may indicate the model doesn't exist or doesn't support the requested parameters."
+                    ) from e
+                except (json.JSONDecodeError, ValueError):
+                    raise RuntimeError(
+                        f"Ollama API error: HTTP {e.response.status_code}\n"
+                        f"Response: {error_msg[:500]}\n"
+                        f"Model: {model}"
+                    ) from e
             lines = response.text.strip().split("\n")
             full_response = ""
             full_thinking = ""
@@ -122,18 +152,35 @@ class OllamaClient:
     async def _stream_generate(
         self, client: httpx.AsyncClient, payload: dict
     ) -> AsyncGenerator[str, None]:
-        async with client.stream("POST", "/api/generate", json=payload) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line:
-                    try:
-                        data = json.loads(line)
-                        if chunk := data.get("response"):
-                            yield chunk
-                    except json.JSONDecodeError:
-                        # Skip malformed lines — Ollama streaming can produce
-                        # partial lines, empty objects, or server error output
-                        continue
+        try:
+            async with client.stream("POST", "/api/generate", json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            if chunk := data.get("response"):
+                                yield chunk
+                        except json.JSONDecodeError:
+                            # Skip malformed lines — Ollama streaming can produce
+                            # partial lines, empty objects, or server error output
+                            continue
+        except httpx.HTTPStatusError as e:
+            error_msg = e.response.text
+            try:
+                error_data = json.loads(error_msg)
+                ollama_error = error_data.get("error", "Unknown error")
+                raise RuntimeError(
+                    f"Ollama API error (streaming): {ollama_error}\n"
+                    f"Model: {payload.get('model')}\n"
+                    f"This may indicate the model doesn't exist or doesn't support the requested parameters."
+                ) from e
+            except (json.JSONDecodeError, ValueError):
+                raise RuntimeError(
+                    f"Ollama API error (streaming): HTTP {e.response.status_code}\n"
+                    f"Response: {error_msg[:500]}\n"
+                    f"Model: {payload.get('model')}"
+                ) from e
 
     async def embeddings(self, model: str, prompt: str) -> EmbeddingResponse:
         client = await self._get_client()
