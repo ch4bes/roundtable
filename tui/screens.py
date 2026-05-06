@@ -28,7 +28,8 @@ class PromptScreen(ModalScreen):
         if event.key == "ctrl+c":
             self.app.exit()
             return
-        super().on_key(event)
+        # Note: ModalScreen doesn't have on_key method to call via super()
+        # Any additional key handling can be added here if needed
 
     def compose(self):
         yield Vertical(
