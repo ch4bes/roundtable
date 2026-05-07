@@ -30,6 +30,11 @@ class SimilarityEngine:
         if not self.use_embeddings:
             raise RuntimeError("Embeddings are disabled")
 
+        # Handle empty text - return a zero vector to avoid shape mismatches
+        if not text or not text.strip():
+            print("Warning: Empty text provided for embedding, using zero vector")
+            return [0.0] * 1024  # Standard embedding dimension
+
         # Initialize cache attributes if not present (handles __new__ bypass in tests)
         if not hasattr(self, '_cache_order'):
             self._cache_order = []
@@ -48,6 +53,12 @@ class SimilarityEngine:
             prompt=text,
         )
         embedding = response.embedding
+
+        # Handle empty embedding response
+        if not embedding or len(embedding) == 0:
+            print("Warning: Empty embedding returned, using zero vector")
+            embedding = [0.0] * 1024
+
         self._cache[cache_key] = embedding
         self._cache_order.append(cache_key)
         self._evict_if_needed()
@@ -66,6 +77,15 @@ class SimilarityEngine:
             self._cache.pop(oldest, None)
 
     def cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
+        # Handle empty or mismatched vectors
+        if not vec1 or not vec2:
+            return 0.0
+        if len(vec1) != len(vec2):
+            # Pad shorter vector with zeros to match lengths
+            max_len = max(len(vec1), len(vec2))
+            vec1 = vec1 + [0.0] * (max_len - len(vec1))
+            vec2 = vec2 + [0.0] * (max_len - len(vec2))
+
         v1 = np.array(vec1)
         v2 = np.array(vec2)
         dot_product = np.dot(v1, v2)
