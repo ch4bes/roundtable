@@ -216,6 +216,9 @@ class DiscussionOrchestrator:
             while True:
                 user_input = await asyncio.to_thread(sys.stdin.readline)
                 
+                if not user_input:
+                    break
+                
                 # Skip (before empty check so 's' works even on first line)
                 if user_input.strip().lower() == 's':
                     print(f"\n[Round {round_num}] Human skipped")

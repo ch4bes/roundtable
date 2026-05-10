@@ -5,13 +5,31 @@
   },
   "models": [
     {
+      "name": "granite4.1:30b-q8_0",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
       "name": "nemotron3:33b",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
     },
     {
-      "name": "qwen3.6:27b-coding-mxfp8",
+      "name": "medgemma:27b-it-q4_K_M",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "medgemma:27b-it-q8_0",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "medgemma1.5:4b-it-bf16",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
@@ -24,6 +42,24 @@
     },
     {
       "name": "qwen3.6:35b-a3b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "gemma4:26b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "gemma4:e4b",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "num_ctx": 32768
+    },
+    {
+      "name": "gemma4:31b",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
@@ -53,32 +89,20 @@
       "num_ctx": 32768
     },
     {
-      "name": "qwen3:30b-thinking",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
       "name": "qwen3:30b-instruct",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
     },
     {
-      "name": "qwen3-coder:30b",
-      "temperature": 0.7,
-      "max_tokens": 2048,
-      "num_ctx": 32768
-    },
-    {
-      "name": "qwen3.6:35b-a3b-coding-mxfp8",
+      "name": "qwen3:30b-thinking",
       "temperature": 0.7,
       "max_tokens": 2048,
       "num_ctx": 32768
     }
   ],
   "moderator": {
-    "name": "nemotron3:33b",
+    "name": "qwen3.6:35b-a3b",
     "temperature": 0.5,
     "max_tokens": 2048,
     "num_ctx": 32768
@@ -108,7 +132,7 @@
     "model": "qwen3-embedding:8b"
   },
   "human_participant": {
-    "enabled": true,
+    "enabled": false,
     "prompt": "Share your perspective on: {prompt}",
     "display_name": "Human"
   },

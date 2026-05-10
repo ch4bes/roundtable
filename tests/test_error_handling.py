@@ -31,7 +31,7 @@ class TestOllamaClientErrorResponses:
             mock_get_client.return_value = mock_client
 
             # Should raise an exception
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(RuntimeError):
                 await client.generate(model="nonexistent-model", prompt="test")
 
     @pytest.mark.asyncio
@@ -54,7 +54,7 @@ class TestOllamaClientErrorResponses:
             mock_client.post = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
 
-            with pytest.raises(httpx.HTTPStatusError):
+            with pytest.raises(RuntimeError):
                 await client.generate(model="model1", prompt="test")
 
     @pytest.mark.asyncio
