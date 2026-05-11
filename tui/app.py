@@ -139,7 +139,18 @@ class RoundtableApp(App):
         async def on_select(session_id: str):
             await self._load_session(session_id)
 
-        self.push_screen(SessionListScreen(load_sessions, on_select))
+        async def on_delete(session_id: str):
+            if self.session_manager:
+                success = await self.session_manager.delete(session_id)
+                if success:
+                    self.notify(f"Session {session_id[:8]} deleted")
+                    # Refresh the list
+                    self.pop_screen()
+                    self._show_session_list()
+                else:
+                    self.notify("Failed to delete session", severity="error")
+
+        self.push_screen(SessionListScreen(load_sessions, on_select, on_delete=on_delete))
 
     async def _load_session(self, session_id: str) -> None:
         session = await self.session_manager.load(session_id)
@@ -330,10 +341,14 @@ class RoundtableApp(App):
             self.action_toggle_pause()
         elif button_id == "stop-btn":
             self.action_stop_discussion()
+        elif button_id == "skip-btn":
+            if self.orchestrator:
+                self.orchestrator.state.skip_requested = True
+                self.notify("Skipping remaining participants in round...", severity="information")
+            else:
+                self.notify("No active discussion to skip", severity="warning")
         elif button_id == "export-btn":
             self.action_export()
-        elif button_id == "skip-btn":
-            self.notify("Skip round not yet implemented", severity="warning")
 
 
 def run_tui(config_path: str | None = None) -> None:

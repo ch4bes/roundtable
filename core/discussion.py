@@ -29,6 +29,7 @@ class DiscussionState:
     consensus_result: ConsensusResult | None = None
     is_running: bool = False
     is_paused: bool = False
+    skip_requested: bool = False
 
 
 class DiscussionOrchestrator:
@@ -166,41 +167,13 @@ class DiscussionOrchestrator:
         if self.config.human_participant.enabled:
             prompt_text = self.config.human_participant.prompt.replace("{prompt}", self.session.prompt)
             
-            latest_summary = self.session.get_latest_attributed_summary()
-            context_mode = self.config.context.mode
-            
-            # Get recent responses for context_mode summary_plus_last_n (last N rounds, not N responses)
-            n_rounds = self.config.context.last_n_responses if context_mode == "summary_plus_last_n" else 0
-            if n_rounds > 0 and self.session.responses:
-                # Get the last N rounds of responses
-                current_round = self.session.responses[-1].round if self.session.responses else 0
-                start_round = max(1, current_round - n_rounds + 1)
-                recent_responses = [r for r in self.session.responses if r.round >= start_round]
-            else:
-                recent_responses = []
-            
-            if latest_summary and round_num > 1:
-                context_display = f"=== MODERATOR SUMMARY (Round {latest_summary.round}) ===\n"
-                context_display += f"AGREEMENT: {latest_summary.agreement_analysis}\n\n"
-                context_display += f"CONSENSUS: {latest_summary.consensus_assessment}\n\n"
-                context_display += "Individual points:\n"
-                for model, points in latest_summary.individual_summaries.items():
-                    context_display += f"  {model}: {points[0] if points else '(no points)'}\n"
-                
-                # Add recent responses if using summary_plus_last_n
-                if recent_responses:
-                    preview_length = self.config.context.response_preview_length
-                    context_display += "\n=== RECENT RESPONSES ===\n"
-                    for r in recent_responses:
-                        # Show response: if preview_length is 0, show all; otherwise truncate
-                        if preview_length == 0:
-                            content_preview = r.content
-                        else:
-                            content_preview = r.content[:preview_length] + "..." if len(r.content) > preview_length else r.content
-                        context_display += f"\n{r.model} (Round {r.round}):\n{content_preview}\n"
-            else:
-                context_display = context[:500] + "..." if len(context) > 500 else context
-            
+            # The 'context' passed in is already the result of _build_context
+            context_display = context
+            if not context_display:
+                context_display = "No context available."
+            elif len(context_display) > 2000: # Basic safety truncate for the terminal
+                context_display = context_display[:2000] + "... [Truncated]"
+
             paragraphs = []
             
             print("\n" + "=" * 60)
@@ -536,7 +509,7 @@ class DiscussionOrchestrator:
 
 Your previous assessment was: {attributed.consensus_assessment}
 
-Based on this quantitative evidence, do you:
+Basedon this quantitative evidence, do you:
 1. Keep your original assessment, OR
 2. Change your assessment to REACHED (if the main answer is agreed upon despite peripheral disagreements)
 
@@ -652,10 +625,35 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
             await self.progress_callback(self.state)
 
     async def run(self) -> Session:
+        if self.session.status == "completed":
+            return self.session
+
         self.state.is_running = True
 
+        # Restore state from session history
+        start_round = self.session.completed_rounds + 1
+        if self.session.responses:
+            max_resp_round = max(r.round for r in self.session.responses)
+            if max_resp_round > self.session.completed_rounds:
+                start_round = max_resp_round
+        
+        # Determine starting model index if we are resuming a partial round
+        current_model_index = 0
+        # Calculate this regardless of start_round since we might be resuming internally in Round 1
+        current_order = await self._rotate_model_order(start_round)
+        responded_in_round = {r.model for r in self.session.responses if r.round == start_round}
+        responded_in_round.update({r.model for r in self.session.human_responses if r.round == start_round})
+        
+        idx = 0
+        while idx < len(current_order) and current_order[idx] in responded_in_round:
+            idx += 1
+        current_model_index = idx
+
+        self.state.current_round = start_round
+        self.state.current_model_index = current_model_index
+
         try:
-            for round_num in range(1, self.config.discussion.max_rounds + 1):
+            for round_num in range(start_round, self.config.discussion.max_rounds + 1):
                 self.state.current_round = round_num
                 self.state.model_order = await self._rotate_model_order(round_num)
 
@@ -669,9 +667,18 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 else:
                     total_participants = len(self.state.model_order)
 
-                for i, model_name in enumerate(self.state.model_order):
+                # Start from the restored model index if it's the starting round
+                start_idx = self.state.current_model_index if round_num == start_round else 0
+                for i in range(start_idx, len(self.state.model_order)):
                     if not self.state.is_running:
                         break
+
+                    if self.state.skip_requested:
+                        print(f"[Round {round_num}] Skip requested. Jumping to summary.")
+                        self.state.skip_requested = False
+                        break
+
+                    model_name = self.state.model_order[i]
 
                     context = await self._build_context(
                         model_position=i + 1,
@@ -738,11 +745,17 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         round_num=round_num,
                     )
 
-                    user_input = await self._handle_human_input(
-                        context=human_context,
-                        round_num=round_num,
-                        position=len(self.state.model_order),
+                    # Check if human already responded in this round
+                    human_already_responded = any(
+                        r.round == round_num for r in self.session.human_responses
                     )
+
+                    if not human_already_responded:
+                        user_input = await self._handle_human_input(
+                            context=human_context,
+                            round_num=round_num,
+                            position=len(self.state.model_order),
+                        )
 
                     if user_input:
                         self.session.add_human_response(
@@ -756,32 +769,45 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
                 print(f"[Round {round_num}] Moderator generating summary...")
 
-                raw_consensus = await self._check_consensus(round_num, return_matrix=True)
-                sim_matrix_raw = raw_consensus.details.get("similarity_matrix")
-                sim_matrix = np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
-                sim_names = raw_consensus.details.get("model_names", [])
+                # Only generate summary if it doesn't exist for this round
+                if self.session.get_summary(round_num) is None:
+                    raw_consensus = await self._check_consensus(round_num, return_matrix=True)
+                    sim_matrix_raw = raw_consensus.details.get("similarity_matrix")
+                    sim_matrix = np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
+                    sim_names = raw_consensus.details.get("model_names", [])
 
-                if sim_matrix is not None:
-                    self.session.add_similarity_matrix(round_num, sim_matrix.tolist(), sim_names)
+                    if sim_matrix is not None:
+                        self.session.add_similarity_matrix(round_num, sim_matrix.tolist(), sim_names)
 
-                summary = await self._generate_summary(
-                    round_num, similarity_matrix=sim_matrix, model_names=sim_names
-                )
-                self.session.add_summary(round_num, summary)
-
-                print(f"[Round {round_num}] Summary completed ({len(summary)} chars)")
-
-                attributed = self.session.get_attributed_summary(round_num)
-                if attributed:
-                    print(
-                        f"[Round {round_num}] Moderator assessment: {attributed.consensus_assessment} (Confidence: {attributed.confidence})"
+                    summary = await self._generate_summary(
+                        round_num, similarity_matrix=sim_matrix, model_names=sim_names
                     )
-                    print(f"[Round {round_num}] Individual summaries:")
-                    for model, points in attributed.individual_summaries.items():
-                        print(f"  {model}: {points[0] if points else '(no points)'}")
+                    self.session.add_summary(round_num, summary)
 
-                if self.config.storage.auto_save:
-                    await self.session_manager.save(self.session)
+                    print(f"[Round {round_num}] Summary completed ({len(summary)} chars)")
+
+                    attributed = self.session.get_attributed_summary(round_num)
+                    if attributed:
+                        print(
+                            f"[Round {round_num}] Moderator assessment: {attributed.consensus_assessment} (Confidence: {attributed.confidence})"
+                        )
+                        print(f"[Round {round_num}] Individual summaries:")
+                        for model, points in attributed.individual_summaries.items():
+                            print(f"  {model}: {points[0] if points else '(no points)'}")
+
+                    if self.config.storage.auto_save:
+                        await self.session_manager.save(self.session)
+                else:
+                    print(f"[Round {round_num}] Summary already exists, skipping generation")
+                    attributed = self.session.get_attributed_summary(round_num)
+                    # Ensure similarity data is available for the consensus check below
+                    sim = self.session.get_similarity_matrix(round_num)
+                    if sim:
+                        sim_matrix = np.array(sim["matrix"])
+                        sim_names = sim["model_names"]
+                    else:
+                        sim_matrix = None
+                        sim_names = []
 
                 if self.config.consensus.mode == "moderator_decides":
                     if self.config.consensus.strictness == "main_point":

@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import re
 import numpy as np
@@ -108,7 +109,7 @@ class SimilarityEngine:
 
         if self.use_embeddings:
             try:
-                embeddings = [await self.get_embedding(text) for text in texts]
+                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in texts])
                 return await self._build_similarity_matrix(texts, model_names, embeddings)
             except (httpx.HTTPError, RuntimeError) as e:
                 print(f"Warning: Embedding generation failed ({e}), falling back to text-based similarity")
@@ -173,10 +174,7 @@ class SimilarityEngine:
 
         if self.use_embeddings:
             try:
-                embeddings = []
-                for text in texts:
-                    embedding = await self.get_embedding(text)
-                    embeddings.append(embedding)
+                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in texts])
 
                 pairs = []
                 for i in range(n):

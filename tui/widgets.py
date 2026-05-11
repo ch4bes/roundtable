@@ -55,7 +55,7 @@ class SimilarityMatrix(Static):
         self._model_names: list[str] = []
 
     def compose(self):
-        yield Static(id="matrix-content")
+        yield DataTable(id="matrix-table")
 
     async def update_from_orchestrator(self, orchestrator, round_num: int) -> None:
         if not orchestrator or not orchestrator.session:
@@ -97,31 +97,29 @@ class SimilarityMatrix(Static):
         if self._matrix is None:
             return
 
-        content_widget = self.query_one("#matrix-content", Static)
+        table = self.query_one("#matrix-table", DataTable)
+        table.clear()
 
-        lines = ["Similarity Matrix:"]
         n = len(self._model_names)
+        n_matrix = self._matrix.shape[0] if self._matrix.size > 0 else 0
         
-        # Bounds checking: ensure matrix dimensions match model_names
-        n_matrix = self._matrix.shape[0] if self._matrix is not None and self._matrix.size > 0 else 0
         if n != n_matrix:
-            content_widget.update(f"Matrix dimension mismatch: {n} names, {n_matrix} rows")
+            table.add_row("Dimension mismatch error")
             return
 
-        header = "       " + "  ".join(f"{name[:6]:>6}" for name in self._model_names)
-        lines.append(header)
+        # Setup columns: first column for row labels, then one for each model
+        column_labels = ["Model"] + self._model_names
+        table.columns = column_labels
 
         for i in range(n):
-            row_values = []
+            row = [self._model_names[i]]
             for j in range(n):
                 if i == j:
-                    row_values.append("   -  ")
+                    row.append("-")
                 else:
                     sim = self._matrix[i, j]
-                    row_values.append(f"{sim:.2f}")
-            lines.append(f"{self._model_names[i][:6]:>6}  {'  '.join(row_values)}")
-
-        content_widget.update("\n".join(lines))
+                    row.append(f"{sim:.2f}")
+            table.add_row(*row)
 
 
 class StatusPanel(Static):

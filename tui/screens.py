@@ -71,10 +71,11 @@ class ConfigScreen(ModalScreen):
 
 
 class SessionListScreen(ModalScreen):
-    def __init__(self, load_sessions_fn, on_select_fn, *args, **kwargs):
+    def __init__(self, load_sessions_fn, on_select_fn, on_delete_fn=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._load_sessions_fn = load_sessions_fn
         self._on_select_fn = on_select_fn
+        self._on_delete_fn = on_delete_fn
 
     def compose(self):
         yield Vertical(
@@ -132,7 +133,14 @@ class SessionListScreen(ModalScreen):
                     asyncio.create_task(_safe_select())
                     self.app.pop_screen()
         elif event.button.id == "delete":
-            self.notify("Delete not implemented", severity="warning")
+            if table.cursor_row is not None:
+                row_key = table.get_row_at(table.cursor_row).key
+                if row_key and self._on_delete_fn:
+                    async def _do_delete():
+                        await self._on_delete_fn(row_key)
+                    asyncio.create_task(_do_delete())
+                else:
+                    self.notify("Delete not implemented or no session selected", severity="warning")
         elif event.button.id == "cancel":
             self.app.pop_screen()
 
