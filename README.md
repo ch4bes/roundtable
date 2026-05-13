@@ -303,14 +303,6 @@ When human participation is enabled, humans can join the discussion:
 
 Humans participate in consensus detection alongside the models.
 
-## Testing
-
-Run the test suite:
-
-```bash
-pytest
-```
-
 ## License
 
 MIT
