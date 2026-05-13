@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+import httpx
 
 
 CODE_BLOCK_OPEN = "```bash"
@@ -176,6 +177,31 @@ def is_embedding_model(model_name: str) -> bool:
     name_lower = model_name.lower()
     embedding_keywords = ["embed", "embedding"]
     return any(kw in name_lower for kw in embedding_keywords)
+
+
+def detect_embedding_dimension(model_name: str, base_url: str = "http://localhost:11434") -> int | None:
+    """Detect embedding dimension by making a test embedding call to Ollama.
+    
+    Returns the embedding dimension if successful, None if failed.
+    """
+    if not model_name:
+        return None
+    
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                f"{base_url}/api/embeddings",
+                json={"model": model_name, "prompt": "test"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            embedding = data.get("embedding", [])
+            if embedding:
+                return len(embedding)
+            return None
+    except Exception as e:
+        print(f"  Warning: Could not detect embedding dimension for '{model_name}': {e}")
+        return None
 
 
 def filter_out_embedding_models(models: list[dict]) -> list[dict]:
@@ -546,6 +572,16 @@ def update_config():
     moderator = basic_result["moderator"]
     embedding_model = has_embedding_model(all_models)
     
+    # Detect embedding dimension if embedding model is available
+    embedding_dimension = None
+    if embedding_model:
+        print(f"Detecting embedding dimension for '{embedding_model}'...")
+        embedding_dimension = detect_embedding_dimension(embedding_model)
+        if embedding_dimension:
+            print(f"  Detected dimension: {embedding_dimension}")
+        else:
+            print("  Could not detect dimension, will use default")
+    
     config = {
         "ollama": {
             "base_url": "http://localhost:11434",
@@ -588,7 +624,8 @@ def update_config():
         },
         "default_prompt": "",
         "embeddings": {
-            "model": embedding_model if embedding_model else "qwen3-embedding:8b"
+            "model": embedding_model if embedding_model else "qwen3-embedding:8b",
+            "dimension": embedding_dimension,
         },
         "human_participant": {
             "enabled": standard_result["human_enabled"],

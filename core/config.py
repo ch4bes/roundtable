@@ -19,6 +19,10 @@ class ModelConfig(BaseModel):
 
 class EmbeddingsConfig(BaseModel):
     model: str = "nomic-embed-text"
+    dimension: int | None = Field(
+        default=None,
+        description="Embedding dimension (auto-detected during config, or set manually)",
+    )
 
 
 class ConsensusConfig(BaseModel):

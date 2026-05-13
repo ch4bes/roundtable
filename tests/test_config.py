@@ -1,6 +1,4 @@
 import pytest
-import json
-from pathlib import Path
 from core.config import Config, ModelConfig
 
 

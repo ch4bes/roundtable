@@ -1,6 +1,5 @@
 """Tests for Session.from_dict() with missing optional fields - Issue #13 core logic coverage."""
-import pytest
-from storage.session import Session, Response, RoundSummary, AttributedSummary
+from storage.session import Session
 
 
 class TestSessionFromDictMissingFields:

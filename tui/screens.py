@@ -2,16 +2,12 @@ from textual.screen import ModalScreen
 from textual.widgets import (
     Static,
     Button,
-    Input,
-    Label,
     DataTable,
     TextArea,
 )
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
+from textual.containers import Vertical, Horizontal
 from textual.message import Message
 import asyncio
-from rich.text import Text
-from rich.panel import Panel
 
 
 class PromptScreen(ModalScreen):

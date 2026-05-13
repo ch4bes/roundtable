@@ -1,4 +1,3 @@
-import pytest
 import numpy as np
 from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
 from storage.session import AttributedSummary

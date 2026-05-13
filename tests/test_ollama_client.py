@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from core.ollama_client import OllamaClient, GenerationResponse, EmbeddingResponse
 
 
@@ -80,8 +80,6 @@ class TestClientMethods:
 
 class TestOllamaEndpoints:
     def test_generate_payload_structure(self):
-        client = OllamaClient()
-
         payload = {
             "model": "test-model",
             "prompt": "test prompt",

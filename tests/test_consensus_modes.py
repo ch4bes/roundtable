@@ -1,6 +1,5 @@
-import pytest
 import numpy as np
-from core.config import Config, ModelConfig, ConsensusConfig, DiscussionConfig
+from core.config import Config, ConsensusConfig, DiscussionConfig
 from core.consensus import ConsensusDetector, ConsensusResult
 
 

@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from core.consensus import ConsensusDetector, ConsensusResult
+from core.consensus import ConsensusDetector
 
 
 class TestPairwiseConsensus:

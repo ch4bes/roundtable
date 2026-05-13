@@ -1,4 +1,3 @@
-import pytest
 from storage.session import Session
 from storage.export import Exporter
 

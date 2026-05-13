@@ -1,7 +1,5 @@
-import pytest
 import threading
 import time
-from unittest.mock import patch, MagicMock
 from core.input_reader import InputBuffer, get_input_buffer
 
 

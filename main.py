@@ -213,7 +213,7 @@ async def run_cli_discussion(config: Config, prompt: str, images: list[str] | No
     finally:
         await client.close()
 
-    print(f"Starting roundtable discussion...")
+    print("Starting roundtable discussion...")
     print(f"Models: {', '.join(m.name for m in config.models)}")
     print(f"Max rounds: {config.discussion.max_rounds}")
     print(f"Consensus threshold: {config.discussion.consensus_threshold}")

@@ -1,8 +1,8 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
 from core.discussion import DiscussionOrchestrator, DiscussionState, _ConsensusVerdict
-from storage.session import Session, Response
+from storage.session import Session
 
 
 class TestDiscussionState:

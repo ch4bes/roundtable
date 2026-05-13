@@ -1,8 +1,5 @@
-from textual.widgets import Static, DataTable, ProgressBar
-from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Static, DataTable
 from textual.reactive import reactive
-from rich.text import Text
-from rich.console import RenderableType
 import numpy as np
 
 
@@ -42,7 +39,6 @@ class TranscriptDisplay(Static):
             content_widget.update("")
         else:
             # Join with double newlines and use from_markup for basic styling
-            from rich.console import Console
 
             combined = "\n\n".join(self._lines)
             content_widget.update(combined)
@@ -151,8 +147,6 @@ class StatusPanel(Static):
 
         status_icon = "⏸" if self.is_paused else "▶" if self.is_running else "⏹"
         status_color = "yellow" if self.is_paused else "green" if self.is_running else "red"
-
-        progress = self.consensus_percentage / 100
 
         lines = [
             f"[{status_color}]{status_icon}[/{status_color}] Status: {'Running' if self.is_running else 'Paused' if self.is_paused else 'Stopped'}",

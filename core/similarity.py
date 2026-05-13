@@ -19,10 +19,13 @@ class SimilarityEngine:
         ollama_client: OllamaClient,
         embedding_model: str = "nomic-embed-text",
         use_embeddings: bool = True,
+        dimension: int | None = None,
     ):
         self.ollama = ollama_client
         self.embedding_model = embedding_model
         self.use_embeddings = use_embeddings
+        self._dimension = dimension
+        self._default_dimension = 1024  # Fallback if dimension not set and can't be auto-detected
         self._cache: dict[str, list[float]] = {}
         self._max_cache_size = 100
         self._cache_order: list[str] = []  # FIFO ordering for eviction
@@ -33,8 +36,9 @@ class SimilarityEngine:
 
         # Handle empty text - return a zero vector to avoid shape mismatches
         if not text or not text.strip():
-            print("Warning: Empty text provided for embedding, using zero vector")
-            return [0.0] * 1024  # Standard embedding dimension
+            dim = self._dimension if self._dimension else self._default_dimension
+            print(f"Warning: Empty text provided for embedding, using zero vector (dim={dim})")
+            return [0.0] * dim
 
         # Initialize cache attributes if not present (handles __new__ bypass in tests)
         if not hasattr(self, '_cache_order'):
@@ -57,8 +61,9 @@ class SimilarityEngine:
 
         # Handle empty embedding response
         if not embedding or len(embedding) == 0:
-            print("Warning: Empty embedding returned, using zero vector")
-            embedding = [0.0] * 1024
+            dim = self._dimension if self._dimension else self._default_dimension
+            print(f"Warning: Empty embedding returned, using zero vector (dim={dim})")
+            embedding = [0.0] * dim
 
         self._cache[cache_key] = embedding
         self._cache_order.append(cache_key)

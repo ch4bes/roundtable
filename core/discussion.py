@@ -52,6 +52,7 @@ class DiscussionOrchestrator:
         self.similarity_engine = SimilarityEngine(
             ollama_client=self.ollama,
             embedding_model=config.embeddings.model,
+            dimension=config.embeddings.dimension,
         )
         self.consensus_detector = ConsensusDetector(
             threshold=config.discussion.consensus_threshold,
@@ -277,8 +278,8 @@ class DiscussionOrchestrator:
             full_text_upper = full_text.upper()
             if re.search(r'consensus\s*:\s*not\s*reached', full_text_upper) or \
                re.search(r'consensus\s+not\s+reached', full_text_upper):
-                print(f"[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED")
-                print(f"  - Updating consensus_assessment to NOT REACHED")
+                print("[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED")
+                print("  - Updating consensus_assessment to NOT REACHED")
                 # Update the session with the corrected value
                 attributed = self.session.get_attributed_summary(round_num)
                 if attributed:
@@ -442,10 +443,10 @@ class DiscussionOrchestrator:
             if re.search(r'consensus\s*:\s*not\s*reached', agreement_upper) or \
                re.search(r'consensus\s+not\s+reached', agreement_upper) or \
                re.search(r'no\s+consensus', agreement_upper):
-                print(f"[Warning] Consensus assessment contradiction detected:")
+                print("[Warning] Consensus assessment contradiction detected:")
                 print(f"  - consensus_assessment: {consensus_assessment}")
-                print(f"  - agreement_analysis contains: 'NOT REACHED'")
-                print(f"  - Defaulting to NOT REACHED")
+                print("  - agreement_analysis contains: 'NOT REACHED'")
+                print("  - Defaulting to NOT REACHED")
                 consensus_assessment = "NOT REACHED"
 
         return {

@@ -1,8 +1,7 @@
 import httpx
 import pytest
-import numpy as np
 from core.similarity import SimilarityEngine
-from core.ollama_client import OllamaClient, EmbeddingResponse
+from core.ollama_client import EmbeddingResponse
 
 
 class MockOllamaClient:
@@ -185,7 +184,7 @@ async def test_pairwise_similarity_fallback_logs_error(capsys):
     engine.use_embeddings = True
     engine._cache = {}
 
-    pairs = await engine.calculate_pairwise_similarities(["text1", "text2"])
+    await engine.calculate_pairwise_similarities(["text1", "text2"])
 
     assert not engine.use_embeddings
     captured = capsys.readouterr()

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
 from core.discussion import DiscussionOrchestrator
-from storage.session import Session, Response
+from storage.session import Session
 
 @pytest.mark.asyncio
 async def test_resume_from_completed_round():

@@ -1,5 +1,3 @@
-import pytest
-import uuid
 from storage.session import Session, Response, RoundSummary, AttributedSummary
 
 

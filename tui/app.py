@@ -1,37 +1,25 @@
 from textual.app import App, ComposeResult
-from textual.screen import Screen, ModalScreen
 from textual.widgets import (
     Header,
     Footer,
-    Static,
     Button,
-    Input,
-    Label,
-    ProgressBar,
-    DataTable,
-    RichLog,
 )
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
+from textual.containers import Container, Vertical
 from textual.binding import Binding
 from textual import work
-from rich.text import Text
-from rich.panel import Panel
-from rich.markdown import Markdown
 import asyncio
 import sys
 
-from core import Config, DiscussionOrchestrator, OllamaClient
+from core import Config, DiscussionOrchestrator
 from core.discussion import DiscussionState
-from storage import Session, SessionManager, Exporter
+from storage import Session, SessionManager
 from tui.widgets import (
     TranscriptDisplay,
     SimilarityMatrix,
     StatusPanel,
-    ModelSelector,
 )
 from tui.screens import (
     PromptScreen,
-    ConfigScreen,
     SessionListScreen,
     ExportScreen,
 )
