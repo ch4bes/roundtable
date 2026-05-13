@@ -171,8 +171,12 @@ class DiscussionOrchestrator:
             context_display = context
             if not context_display:
                 context_display = "No context available."
-            elif len(context_display) > 2000: # Basic safety truncate for the terminal
-                context_display = context_display[:2000] + "... [Truncated]"
+            # Dynamic truncation based on terminal size, with sensible minimum/maximum
+            import shutil
+            term_width = shutil.get_terminal_size().columns if shutil.get_terminal_size().columns > 0 else 80
+            max_chars = max(500, min(term_width * 30, 5000))  # 30 chars per line, between 500-5000
+            if len(context_display) > max_chars:
+                context_display = context_display[:max_chars] + "... [Truncated]"
 
             paragraphs = []
             
@@ -509,7 +513,7 @@ class DiscussionOrchestrator:
 
 Your previous assessment was: {attributed.consensus_assessment}
 
-Basedon this quantitative evidence, do you:
+Based on this quantitative evidence, do you:
 1. Keep your original assessment, OR
 2. Change your assessment to REACHED (if the main answer is agreed upon despite peripheral disagreements)
 
@@ -800,14 +804,23 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 else:
                     print(f"[Round {round_num}] Summary already exists, skipping generation")
                     attributed = self.session.get_attributed_summary(round_num)
-                    # Ensure similarity data is available for the consensus check below
                     sim = self.session.get_similarity_matrix(round_num)
-                    if sim:
-                        sim_matrix = np.array(sim["matrix"])
-                        sim_names = sim["model_names"]
-                    else:
+
+                    # Validate required data exists for consensus check
+                    if not attributed:
+                        print(f"[Round {round_num}] Warning: Summary exists but attributed summary missing, regenerating...")
+                        # Fall through to generate new summary
+                        attributed = None
                         sim_matrix = None
                         sim_names = []
+                    elif sim is None:
+                        print(f"[Round {round_num}] Warning: Summary exists but similarity matrix missing, regenerating...")
+                        # Fall through to generate new similarity matrix
+                        sim_matrix = None
+                        sim_names = []
+                    else:
+                        sim_matrix = np.array(sim["matrix"])
+                        sim_names = sim["model_names"]
 
                 if self.config.consensus.mode == "moderator_decides":
                     if self.config.consensus.strictness == "main_point":
