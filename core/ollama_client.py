@@ -40,6 +40,7 @@ class OllamaClient:
     async def close(self):
         if self._client and not self._client.is_closed:
             await self._client.aclose()
+        self._client = None
 
     def _supports_think_param(self, model: str) -> bool:
         """Check if the model supports the 'think' parameter.
