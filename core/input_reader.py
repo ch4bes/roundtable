@@ -17,12 +17,18 @@ class InputBuffer:
         if wait:
             if self._ready.wait(timeout=timeout):
                 with self._lock:
-                    return self._buffer
+                    result = self._buffer
+                    self._buffer = ""
+                    self._ready.clear()
+                return result
             return None
         else:
             if self._ready.is_set():
                 with self._lock:
-                    return self._buffer
+                    result = self._buffer
+                    self._buffer = ""
+                    self._ready.clear()
+                return result
             return None
 
     def is_ready(self) -> bool:
