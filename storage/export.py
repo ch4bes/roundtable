@@ -84,6 +84,7 @@ class Exporter:
 
     @staticmethod
     async def export_markdown(session: Session, output_path: str | Path) -> Path:
+        """Export a session to a markdown file with discussion content."""
         output_path = Path(output_path)
 
         lines = [
@@ -191,6 +192,7 @@ class Exporter:
 
     @staticmethod
     async def export_json(session: Session, output_path: str | Path) -> Path:
+        """Export a session to a JSON file with all discussion data."""
         output_path = Path(output_path)
         data = session.to_dict()
         data["exported_at"] = datetime.now().isoformat()
@@ -206,6 +208,7 @@ class Exporter:
         output_path: str | Path,
         format: str = "md",
     ) -> Path:
+        """Export a session in the specified format (md or json)."""
         if format == "json":
             return await Exporter.export_json(session, output_path)
         else:

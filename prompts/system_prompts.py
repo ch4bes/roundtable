@@ -8,8 +8,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class ModeratorPrompt:
+    """Prompt templates for the discussion moderator role."""
+
     @staticmethod
     def system(threshold: float = 0.75) -> str:
+        """Return the moderator system prompt with the given consensus threshold."""
         return f"""You are a neutral discussion moderator. Your task is to:
 1. Summarize each participant's main points (attributed to them)
 2. Analyze ALL clusters in the similarity matrix to determine agreement
@@ -71,6 +74,7 @@ Justification: One sentence explaining why the main answer is or is not agreed u
 
     @staticmethod
     def template(responses: list[dict[str, str]], round_num: int) -> str:
+        """Build a moderator prompt from round responses."""
         response_text = "\n\n".join(f"### {r['model']}\n{r['content']}" for r in responses)
         return f"Round {round_num} responses:\n\n{response_text}\n\n" + "Follow the format above."
 
@@ -117,6 +121,7 @@ Justification: One sentence explaining why the main answer is or is not agreed u
         model_names: list[str],
         threshold: float = 0.75,
     ) -> str:
+        """Build a moderator prompt including a formatted similarity matrix."""
         response_text = "\n\n".join(f"### {r['model']}\n{r['content']}" for r in responses)
 
         matrix_table = ModeratorPrompt._format_similarity_matrix(similarity_matrix, model_names)
@@ -145,6 +150,7 @@ Follow the format. Use the similarity matrix to identify clusters and determine 
         all_responses: list,
         all_summaries: list,
     ) -> tuple[str, str]:
+        """Return (system_prompt, user_prompt) for the final discussion review."""
         system = """You are writing the final review of a completed roundtable discussion.
 Your task is to provide a comprehensive analysis of the entire discussion.
 
@@ -216,18 +222,23 @@ Generate the final review following the structure above."""
 
 @dataclass
 class ParticipantPrompt:
+    """Prompt templates for participant models in a roundtable discussion."""
+
     @staticmethod
     def system() -> str:
+        """Return the participant system prompt."""
         return "You are a roundtable participant. Provide direct answers. Avoid greetings, hedging, and meta-commentary."
 
     @staticmethod
     def initial(prompt: str) -> str:
+        """Build the initial participant prompt from the user's question."""
         return f"{prompt}\n\nProvide your direct answer in 2-4 paragraphs."
 
     @staticmethod
     def with_summary(
         prompt: str, summary: str, model_position: int, total_models: int, round_num: int
     ) -> str:
+        """Build a participant prompt with a summary from the previous round."""
         return f"{prompt}\n\nSUMMARY:\n{summary}\n\nModel {model_position}/{total_models} round {round_num}. Updated response."
 
     @staticmethod
@@ -238,6 +249,7 @@ class ParticipantPrompt:
         total_models: int,
         round_num: int,
     ) -> str:
+        """Build a participant prompt with an attributed summary from the previous round."""
         individual_text = "\n\n".join(
             f"### {model}\n" + "\n".join(f"- {p}" for p in points)
             for model, points in attributed.individual_summaries.items()
@@ -275,5 +287,6 @@ Provide your updated position."""
         total_models: int,
         round_num: int,
     ) -> str:
+        """Build a participant prompt with context responses from other models."""
         context_text = "\n".join(f"{r['model']}: {r['content']}" for r in context_responses)
         return f"{prompt}\n\nRESPONSES:\n{context_text}\n\nModel {model_position}/{total_models} round {round_num}."

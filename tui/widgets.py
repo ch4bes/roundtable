@@ -4,18 +4,23 @@ import numpy as np
 
 
 class TranscriptDisplay(Static):
+    """Display the discussion transcript with model responses and summaries."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lines: list[str] = []
 
     def compose(self):
+        """Yield the transcript content widget."""
         yield Static(id="transcript-content")
 
     def clear(self) -> None:
+        """Clear all transcript lines and refresh the display."""
         self._lines.clear()
         self._update_display()
 
     def add_response(self, model: str, content: str, round_num: int, response_time_s: float | None = None) -> None:
+        """Append a model response to the transcript and refresh the display."""
         time_str = ""
         if response_time_s is not None:
             if response_time_s >= 1:
@@ -26,10 +31,12 @@ class TranscriptDisplay(Static):
         self._update_display()
 
     def add_summary(self, summary: str, round_num: int) -> None:
+        """Append a round summary to the transcript and refresh the display."""
         self._lines.append(f"[bold cyan]📝 Summary (Round {round_num})[/bold cyan]\n{summary}")
         self._update_display()
 
     def add_system_message(self, message: str) -> None:
+        """Append an italicized system message to the transcript."""
         self._lines.append(f"[dim italic]{message}[/dim italic]")
         self._update_display()
 
@@ -45,15 +52,20 @@ class TranscriptDisplay(Static):
 
 
 class SimilarityMatrix(Static):
+    """Display a pairwise semantic similarity matrix as a DataTable."""
+
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._matrix: np.ndarray | None = None
         self._model_names: list[str] = []
 
     def compose(self):
+        """Yield the DataTable widget for the similarity matrix."""
         yield DataTable(id="matrix-table")
 
     async def update_from_orchestrator(self, orchestrator, round_num: int) -> None:
+        """Compute and display the similarity matrix from the orchestrator's current round."""
         if not orchestrator or not orchestrator.session:
             return
 
@@ -72,11 +84,13 @@ class SimilarityMatrix(Static):
         self._update_display()
 
     def set_matrix(self, matrix: np.ndarray, model_names: list[str]) -> None:
+        """Set the similarity matrix and model names for display."""
         self._matrix = matrix
         self._model_names = model_names
         self._update_display()
 
     def load_from_session(self, session, round_num: int) -> bool:
+        """Load a similarity matrix from a session for a specific round."""
         sim = None
         try:
             sim = session.get_similarity_matrix(round_num)
@@ -119,6 +133,9 @@ class SimilarityMatrix(Static):
 
 
 class StatusPanel(Static):
+    """Display discussion status: round, model, consensus percentage."""
+
+
     current_round: reactive[int] = reactive(1)
     max_rounds: reactive[int] = reactive(10)
     current_model: reactive[str] = reactive("")
@@ -127,9 +144,12 @@ class StatusPanel(Static):
     is_paused: reactive[bool] = reactive(False)
 
     def compose(self):
+        """Yield the status content widget."""
         yield Static(id="status-content")
 
     def update_state(self, state) -> None:
+        """Update display with discussion state."""
+
         self.current_round = state.current_round
         self.current_model = (
             state.model_order[state.current_model_index] if state.model_order else ""
@@ -161,12 +181,17 @@ class StatusPanel(Static):
 
 
 class ModelSelector(Static):
+    """Display checkboxes for selecting participant models."""
+
+
     def __init__(self, models: list[str], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.models = models
         self.selected: list[str] = []
 
     def compose(self):
+        """Yield the label and model option widgets."""
+
         yield Static("Select Models:", id="selector-label")
         for model in self.models:
             yield Static(f"☐ {model}", classes="model-option", id=f"model-{model}")

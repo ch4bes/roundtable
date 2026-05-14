@@ -21,6 +21,7 @@ class PromptScreen(ModalScreen):
         self.config = config
 
     def on_key(self, event):
+        """Handle key Press events. Exit on Ctrl+C."""
         if event.key == "ctrl+c":
             self.app.exit()
             return
@@ -28,6 +29,7 @@ class PromptScreen(ModalScreen):
         # Any additional key handling can be added here if needed
 
     def compose(self):
+        """Yield the prompt input screen layout."""
         yield Vertical(
             Static("Enter Discussion Prompt", classes="modal-title"),
             TextArea(
@@ -42,6 +44,7 @@ class PromptScreen(ModalScreen):
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses: start a discussion or cancel the screen."""
         if event.button.id == "start":
             textarea = self.query_one("#prompt-input", TextArea)
             prompt = textarea.text.strip()
@@ -55,6 +58,7 @@ class PromptScreen(ModalScreen):
 
 class ConfigScreen(ModalScreen):
     def compose(self):
+        """Yield the JSON configuration input screen layout."""
         yield Vertical(
             Static("Configuration (JSON)", classes="modal-title"),
             TextArea(id="config-input", language="json"),
@@ -74,6 +78,7 @@ class SessionListScreen(ModalScreen):
         self._on_delete_fn = on_delete_fn
 
     def compose(self):
+        """Yield the saved sessions list screen layout."""
         yield Vertical(
             Static("Saved Sessions", classes="modal-title"),
             DataTable(id="sessions-table"),
@@ -86,6 +91,7 @@ class SessionListScreen(ModalScreen):
         )
 
     def on_mount(self) -> None:
+        """Load sessions into the table when the screen mounts."""
         table = self.query_one("#sessions-table", DataTable)
         table.add_column("ID", width=40)
         table.add_column("Prompt", width=60)
@@ -96,6 +102,7 @@ class SessionListScreen(ModalScreen):
         import asyncio
 
         async def load():
+            """Load all sessions into the sessions table."""
             try:
                 sessions = await self._load_sessions_fn()
                 for session in sessions:
@@ -115,6 +122,7 @@ class SessionListScreen(ModalScreen):
         asyncio.create_task(load())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses: load, delete, or cancel the session list."""
         table = self.query_one("#sessions-table", DataTable)
 
         if event.button.id == "load":
@@ -148,6 +156,7 @@ class ExportScreen(ModalScreen):
         self.default_format = default_format
 
     def compose(self):
+        """Yield the export format selection screen layout."""
         yield Vertical(
             Static("Export Discussion", classes="modal-title"),
             Static(f"Session: {self.session.id[:36]}", id="session-info"),
@@ -161,12 +170,14 @@ class ExportScreen(ModalScreen):
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle export, cancel, and confirmation button presses."""
         if event.button.id in ["export-md", "export-json"]:
             file_format = "md" if event.button.id == "export-md" else "json"
             import asyncio
             from pathlib import Path
 
             async def do_export():
+                """Export the session to a file in the requested format."""
                 try:
                     from storage import Exporter
 

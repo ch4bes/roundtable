@@ -52,6 +52,7 @@ class RoundtableApp(App):
         super().__init__()
 
     def compose(self) -> ComposeResult:
+        """Yield the main application layout widgets."""
         yield Header()
         yield Container(
             Vertical(
@@ -75,6 +76,7 @@ class RoundtableApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        """Initialize the app: load config and set initial title."""
         self.title = "LLM Roundtable Discussion"
         self.sub_title = "Loading..."
         self._load_config()
@@ -121,13 +123,16 @@ class RoundtableApp(App):
 
     def _show_session_list(self) -> None:
         async def load_sessions():
+            """List all saved sessions from storage."""
             sessions = await self.session_manager.list_sessions()
             return sessions
 
         async def on_select(session_id: str):
+            """Handle selection of a session from the list."""
             await self._load_session(session_id)
 
         async def on_delete(session_id: str):
+            """Handle deletion of a session from the list."""
             if self.session_manager:
                 success = await self.session_manager.delete(session_id)
                 if success:
@@ -228,12 +233,14 @@ class RoundtableApp(App):
             self.discussion_running = False
 
     def action_start_discussion(self) -> None:
+        """Open the prompt screen to start a new discussion."""
         if self.discussion_running:
             self.notify("Discussion already running", severity="warning")
             return
         self._show_prompt_screen()
 
     def action_quit(self) -> None:
+        """Quit the application."""
         self.exit()
 
     def _safe_create_task(
@@ -270,6 +277,7 @@ class RoundtableApp(App):
         self._tasks.clear()
 
     def action_toggle_pause(self) -> None:
+        """Toggle between pause and resume the discussion."""
         if not self.discussion_running:
             return
 
@@ -284,6 +292,7 @@ class RoundtableApp(App):
                 )
 
     def action_stop_discussion(self) -> None:
+        """Stop the running discussion."""
         if not self.discussion_running:
             return
 
@@ -293,6 +302,7 @@ class RoundtableApp(App):
             )
 
     def action_save_session(self) -> None:
+        """Save the current session to storage."""
         if self.session and self.session_manager:
             manager = self.session_manager
             session = self.session
@@ -306,6 +316,7 @@ class RoundtableApp(App):
             self.notify("No active session to save", severity="warning")
 
     def action_export(self) -> None:
+        """Open the export screen for the current session."""
         if not self.session:
             self.notify("No session to export", severity="warning")
             return
@@ -313,16 +324,19 @@ class RoundtableApp(App):
         self.push_screen(ExportScreen(self.session, self.config.storage.export_format))
 
     def action_open_session(self) -> None:
+        """Open the session list screen to load a saved session."""
         if self.discussion_running:
             self.notify("Cannot open session while discussion is running", severity="warning")
             return
         self._show_session_list()
 
     def on_prompt_screen_submitted(self, message: PromptScreen.Submitted) -> None:
+        """Handle the prompt screen submission to start a discussion."""
         self.pop_screen()
         self._run_discussion(message.prompt)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses from the control buttons."""
         button_id = event.button.id
 
         if button_id == "pause-btn":
@@ -340,5 +354,6 @@ class RoundtableApp(App):
 
 
 def run_tui(config_path: str | None = None) -> None:
+    """Entry point: create and run the RoundtableApp."""
     app = RoundtableApp(config_path=config_path)
     app.run()
