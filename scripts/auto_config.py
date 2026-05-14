@@ -212,7 +212,6 @@ def filter_out_embedding_models(models: list[dict]) -> list[dict]:
 
 def prompt_with_default(prompt_text: str, default: int) -> int:
     """Prompt user for an integer with a default value."""
-    """Prompt user with a default value."""
     user_input = input(f"{prompt_text} (default: {default}): ").strip()
     if user_input == "":
         return default
@@ -225,7 +224,6 @@ def prompt_with_default(prompt_text: str, default: int) -> int:
 
 def prompt_float_with_default(prompt_text: str, default: float) -> float:
     """Prompt user for a float with a default value."""
-    """Prompt user with a default float value."""
     user_input = input(f"{prompt_text} (default: {default}): ").strip()
     if user_input == "":
         return default
