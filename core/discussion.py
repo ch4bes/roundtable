@@ -314,17 +314,10 @@ class DiscussionOrchestrator:
 
         return response.response
 
-    def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
-        """
-        Parse the moderator's attributed summary from Markdown text.
-        
-        Uses a two-tier approach:
-        1. First tries to parse JSON blocks (preferred - most reliable)
-        2. Falls back to regex-based Markdown parsing with tolerant patterns
-        """
+    @staticmethod
+    def _parse_json_block(text: str) -> dict | None:
+        """Tier 1: Try to parse JSON block from moderator output."""
         import re
-        
-        # Tier 1: Try JSON block parsing first
         json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)
         if json_match:
             try:
@@ -339,7 +332,10 @@ class DiscussionOrchestrator:
             except json.JSONDecodeError:
                 pass  # Fall through to Markdown parsing
         
-        # Tier 2: Regex-based Markdown parsing (tolerant of LLM variations)
+        return None
+    @staticmethod
+    def _parse_markdown_summary(text: str, round_responses: list) -> dict:
+        """Tier 2: Regex-based Markdown parsing (tolerant of LLM variations)."""
         individual_summaries: dict[str, list[str]] = {}
         agreement_analysis = ""
         consensus_assessment = "NOT REACHED"
@@ -455,6 +451,19 @@ class DiscussionOrchestrator:
             "consensus_assessment": consensus_assessment,
             "confidence": confidence,
         }
+
+    def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
+        """
+        Parse the moderator's attributed summary from Markdown text.
+
+        Uses a two-tier approach:
+        1. First tries to parse JSON blocks (preferred - most reliable)
+        2. Falls back to regex-based Markdown parsing with tolerant patterns
+        """
+        parsed = DiscussionOrchestrator._parse_json_block(text)
+        if parsed is not None:
+            return parsed
+        return DiscussionOrchestrator._parse_markdown_summary(text, round_responses)
 
     def _check_main_point_consensus(self, attributed) -> str:
         if not attributed:
