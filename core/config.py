@@ -115,7 +115,7 @@ class Config(BaseSettings):
 
     @field_validator("models")
     @classmethod
-    def validate_models(cls, v):
+    def validate_models(cls, v) -> "Config":
         if len(v) < 2:
             raise ValueError("At least 2 models are required for a roundtable discussion")
         return v

@@ -14,7 +14,7 @@ from core import Config
 from storage import SessionManager, Exporter
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="LLM Roundtable Discussion Program",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -284,7 +284,7 @@ async def run_cli_discussion(config: Config, prompt: str, images: list[str] | No
         await orchestrator.cleanup()
 
 
-def main():
+def main() -> None:
     args = parse_args()
 
     # Determine config file path

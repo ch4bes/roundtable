@@ -2,7 +2,6 @@ import asyncio
 import httpx
 import re
 import numpy as np
-from typing import List
 from dataclasses import dataclass
 from .ollama_client import OllamaClient, EmbeddingResponse
 
@@ -10,7 +9,7 @@ from .ollama_client import OllamaClient, EmbeddingResponse
 @dataclass
 class SimilarityResult:
     matrix: np.ndarray
-    model_names: List[str]
+    model_names: list[str]
 
 
 class SimilarityEngine:
@@ -97,7 +96,10 @@ class SimilarityEngine:
             self._cache.pop(oldest, None)
 
     def cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
-        # Handle empty or mismatched vectors
+        """Compute cosine similarity between two vectors.
+        
+            Handles empty or mismatched vectors gracefully.
+            """
         if not vec1 or not vec2:
             return 0.0
         if len(vec1) != len(vec2):
@@ -116,7 +118,7 @@ class SimilarityEngine:
         return float(dot_product / (norm1 * norm2))
 
     async def calculate_similarity_matrix(
-        self, texts: List[str], model_names: List[str]
+        self, texts: list[str], model_names: list[str]
     ) -> SimilarityResult:
         # NOTE: Sequential embedding calls. Ollama's /api/embeddings does not support
         # batching. If Ollama adds a batch endpoint, replace with asyncio.gather() for
@@ -138,9 +140,9 @@ class SimilarityEngine:
 
     async def _build_similarity_matrix(
         self,
-        texts: List[str],
-        model_names: List[str],
-        embeddings: List[list[float]] | None,
+        texts: list[str],
+        model_names: list[str],
+        embeddings: list[list[float]] | None,
     ) -> SimilarityResult:
         """
         Build a full NxN symmetric similarity matrix.
@@ -164,7 +166,7 @@ class SimilarityEngine:
         return SimilarityResult(matrix=matrix, model_names=model_names)
 
     async def _calculate_text_similarity_matrix(
-        self, texts: List[str], model_names: List[str]
+        self, texts: list[str], model_names: list[str]
     ) -> SimilarityResult:
         """Delegate to _build_similarity_matrix with no embeddings (text fallback)."""
         return await self._build_similarity_matrix(texts, model_names, None)
@@ -185,7 +187,7 @@ class SimilarityEngine:
         return len(intersection) / len(union) if union else 0.0
 
     async def calculate_pairwise_similarities(
-        self, texts: List[str]
+        self, texts: list[str]
     ) -> list[tuple[int, int, float]]:
         n = len(texts)
         if n < 2:
@@ -214,7 +216,7 @@ class SimilarityEngine:
 
         return pairs
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         # Initialize cache attributes if not present (handles __new__ bypass in tests)
         if not hasattr(self, '_cache'):
             self._cache = {}

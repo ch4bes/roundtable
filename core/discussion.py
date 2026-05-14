@@ -3,9 +3,11 @@ import json
 import re
 import sys
 from datetime import datetime
-from typing import Callable, Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import numpy as np
+import random
+import shutil
 from .config import Config
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
@@ -67,7 +69,6 @@ class DiscussionOrchestrator:
         )
 
     async def _rotate_model_order(self, round_num: int) -> list[str]:
-        import random
         model_names = [m.name for m in self.config.models]
         if self.config.discussion.rotation_order == "sequential":
             rotation = (round_num - 1) % len(model_names)
@@ -173,7 +174,6 @@ class DiscussionOrchestrator:
             if not context_display:
                 context_display = "No context available."
             # Dynamic truncation based on terminal size, with sensible minimum/maximum
-            import shutil
             term_width = shutil.get_terminal_size().columns if shutil.get_terminal_size().columns > 0 else 80
             max_chars = max(500, min(term_width * 30, 5000))  # 30 chars per line, between 500-5000
             if len(context_display) > max_chars:
@@ -634,7 +634,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
         return self.consensus_detector.detect(similarity_result.matrix)
 
-    async def _notify_progress(self):
+    async def _notify_progress(self) -> None:
         if self.progress_callback:
             await self.progress_callback(self.state)
 
@@ -939,18 +939,18 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
         return self.session
 
-    async def pause(self):
+    async def pause(self) -> None:
         self.state.is_paused = True
         await self._notify_progress()
 
-    async def resume(self):
+    async def resume(self) -> None:
         self.state.is_paused = False
         await self._notify_progress()
 
-    async def stop(self):
+    async def stop(self) -> None:
         self.state.is_running = False
         self.state.is_paused = False
         await self._notify_progress()
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         await self.ollama.close()

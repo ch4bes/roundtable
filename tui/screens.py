@@ -20,7 +20,7 @@ class PromptScreen(ModalScreen):
         super().__init__(*args, **kwargs)
         self.config = config
 
-    def on_key(self, event):
+    def on_key(self, event) -> None:
         """Handle key Press events. Exit on Ctrl+C."""
         if event.key == "ctrl+c":
             self.app.exit()
@@ -28,7 +28,7 @@ class PromptScreen(ModalScreen):
         # Note: ModalScreen doesn't have on_key method to call via super()
         # Any additional key handling can be added here if needed
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the prompt input screen layout."""
         yield Vertical(
             Static("Enter Discussion Prompt", classes="modal-title"),
@@ -57,7 +57,7 @@ class PromptScreen(ModalScreen):
 
 
 class ConfigScreen(ModalScreen):
-    def compose(self):
+    def compose(self) -> None:
         """Yield the JSON configuration input screen layout."""
         yield Vertical(
             Static("Configuration (JSON)", classes="modal-title"),
@@ -77,7 +77,7 @@ class SessionListScreen(ModalScreen):
         self._on_select_fn = on_select_fn
         self._on_delete_fn = on_delete_fn
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the saved sessions list screen layout."""
         yield Vertical(
             Static("Saved Sessions", classes="modal-title"),
@@ -155,7 +155,7 @@ class ExportScreen(ModalScreen):
         self.session = session
         self.default_format = default_format
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the export format selection screen layout."""
         yield Vertical(
             Static("Export Discussion", classes="modal-title"),

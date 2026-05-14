@@ -145,17 +145,17 @@ class Session:
         self.updated_at = datetime.now().isoformat()
         return attr_summary
 
-    def mark_completed(self, consensus_round: int | None = None):
+    def mark_completed(self, consensus_round: int | None = None) -> None:
         self.status = "completed"
         self.consensus_reached = consensus_round is not None
         self.consensus_round = consensus_round
         self.updated_at = datetime.now().isoformat()
 
-    def mark_stopped(self):
+    def mark_stopped(self) -> None:
         self.status = "stopped"
         self.updated_at = datetime.now().isoformat()
 
-    def add_similarity_matrix(self, round_num: int, matrix: list[list[float]], model_names: list[str]):
+    def add_similarity_matrix(self, round_num: int, matrix: list[list[float]], model_names: list[str]) -> None:
         """Store the similarity matrix from the SimilarityEngine."""
         matrix_entry = {
             "round": round_num,
@@ -173,7 +173,7 @@ class Session:
                 return m
         return None
 
-    def add_final_review(self, review_text: str):
+    def add_final_review(self, review_text: str) -> None:
         self.final_review = review_text
         self.updated_at = datetime.now().isoformat()
 

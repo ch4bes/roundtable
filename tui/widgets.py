@@ -10,7 +10,7 @@ class TranscriptDisplay(Static):
         super().__init__(*args, **kwargs)
         self._lines: list[str] = []
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the transcript content widget."""
         yield Static(id="transcript-content")
 
@@ -60,7 +60,7 @@ class SimilarityMatrix(Static):
         self._matrix: np.ndarray | None = None
         self._model_names: list[str] = []
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the DataTable widget for the similarity matrix."""
         yield DataTable(id="matrix-table")
 
@@ -143,7 +143,7 @@ class StatusPanel(Static):
     is_running: reactive[bool] = reactive(False)
     is_paused: reactive[bool] = reactive(False)
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the status content widget."""
         yield Static(id="status-content")
 
@@ -189,7 +189,7 @@ class ModelSelector(Static):
         self.models = models
         self.selected: list[str] = []
 
-    def compose(self):
+    def compose(self) -> None:
         """Yield the label and model option widgets."""
 
         yield Static("Select Models:", id="selector-label")

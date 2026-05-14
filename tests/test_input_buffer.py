@@ -33,13 +33,18 @@ class TestInputBufferRaceCondition:
 
     def test_concurrent_puts_last_writer_wins(self):
         """Concurrent puts - last writer wins since buffer is single-value."""
+        import time as _time
+
         put_results = []
+        put_lock = threading.Lock()
+        ready_barrier = threading.Barrier(5)
 
         def producer(text):
-            import time
-            time.sleep(0.01 * hash(text) % 10)
+            ready_barrier.wait()  # Synchronise all threads to start together
+            _time.sleep(0.001 * (hash(text) % 10 + 1))  # Stagger by 1-10ms (hash+1 avoids 0)
             self.buffer.put(text)
-            put_results.append(text)
+            with put_lock:
+                put_results.append(text)
 
         threads = []
         for i in range(5):
@@ -57,6 +62,7 @@ class TestInputBufferRaceCondition:
         final_val = self.buffer.get(wait=True, timeout=1)
         assert final_val is not None
         assert final_val in put_results
+
 
     def test_clear_preserves_functionality(self):
         """After clear(), buffer is empty and subsequent puts work normally."""
