@@ -1,22 +1,24 @@
 import numpy as np
-from core.config import Config, ConsensusConfig, DiscussionConfig
+from core.config import Config, DiscussionConfig
 from core.consensus import ConsensusDetector, ConsensusResult
 
 
 class TestConsensusModesConfig:
     def test_moderator_decides_mode(self):
-        config = Config(consensus=ConsensusConfig(mode="moderator_decides"))
-        assert config.consensus.mode == "moderator_decides"
+        config = Config(
+            discussion=DiscussionConfig(mode="moderator_decides")
+        )
+        assert config.discussion.mode == "moderator_decides"
 
     def test_programmatic_decides_mode(self):
         config = Config(
-            consensus=ConsensusConfig(
+            discussion=DiscussionConfig(
                 mode="programmatic_decides",
-                threshold=0.8,
+                consensus_threshold=0.8,
             )
         )
-        assert config.consensus.mode == "programmatic_decides"
-        assert config.consensus.threshold == 0.8
+        assert config.discussion.mode == "programmatic_decides"
+        assert config.discussion.consensus_threshold == 0.8
 
 
 class TestProgrammaticConsensus:
@@ -66,7 +68,7 @@ class TestProgrammaticConsensus:
         assert result.reached is False
 
 
-class TestConsensusConfigValidation:
+class TestDiscussionConfigValidation:
     def test_consensus_method_pairwise(self):
         config = Config(
             discussion=DiscussionConfig(

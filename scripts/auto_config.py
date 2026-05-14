@@ -606,6 +606,8 @@ def update_config():
             "max_rounds": standard_result["max_rounds"],
             "consensus_threshold": standard_result["consensus_threshold"],
             "consensus_method": all_result["consensus_method"],
+             "strictness": all_result["strictness"],
+             "mode": all_result["consensus_mode"],
             "rotation_order": advanced_result["rotation"],
             "final_review_enabled": advanced_result["final_review"],
             "consensus_agreement_when_reached": all_result["agree_reached"],
@@ -631,12 +633,6 @@ def update_config():
             "enabled": standard_result["human_enabled"],
             "prompt": all_result["human_prompt"],
             "display_name": all_result["human_name"],
-        },
-        "consensus": {
-            "mode": all_result["consensus_mode"],
-            "threshold": standard_result["consensus_threshold"],
-            "method": all_result["consensus_method"],
-            "strictness": all_result["strictness"],
         },
     }
     

@@ -235,15 +235,15 @@ class TestConfigValidation:
 
     def test_invalid_consensus_mode_raises_error(self):
         """Invalid consensus mode should raise validation error."""
-        from core.config import ConsensusConfig
+        from core.config import DiscussionConfig
         with pytest.raises(Exception):
-            ConsensusConfig(mode="invalid_mode")
+            DiscussionConfig(mode="invalid_mode")
 
     def test_invalid_consensus_method_raises_error(self):
         """Invalid consensus method should raise validation error."""
-        from core.config import ConsensusConfig
+        from core.config import DiscussionConfig
         with pytest.raises(Exception):
-            ConsensusConfig(method="invalid_method")
+            DiscussionConfig(consensus_method="invalid_method")
 
     def test_invalid_rotation_order_raises_error(self):
         """Invalid rotation order should raise validation error."""

@@ -25,33 +25,31 @@ class EmbeddingsConfig(BaseModel):
     )
 
 
-class ConsensusConfig(BaseModel):
-    mode: Literal["moderator_decides", "programmatic_decides"] = "moderator_decides"
-    threshold: float = Field(default=0.75, ge=0, le=1)
-    method: Literal["pairwise", "clustering"] = "clustering"
-    strictness: Literal["full", "main_point"] = "main_point"
-
-
 class DiscussionConfig(BaseModel):
-    max_rounds: int = Field(default=10, gt=0)
+     # Consensus detection settings
     consensus_threshold: float = Field(default=0.75, ge=0, le=1)
     consensus_method: Literal["pairwise", "clustering"] = "clustering"
+    mode: Literal["moderator_decides", "programmatic_decides"] = "moderator_decides"
+    strictness: Literal["full", "main_point"] = "main_point"
+    
+     # Discussion flow settings
+    max_rounds: int = Field(default=10, gt=0)
     rotation_order: Literal["sequential", "random", "fixed"] = "sequential"
     final_review_enabled: bool = True
     
-    # Embedding-based similarity thresholds for _check_consensus:
+     # Embedding-based similarity thresholds for _check_consensus:
     consensus_agreement_when_reached: float = Field(
         default=0.50, ge=0, le=1,
         description="Similarity threshold when moderator assessed REACHED (lower bar)"
-    )
+     )
     consensus_agreement_when_not_reached: float = Field(
         default=0.75, ge=0, le=1,
         description="Similarity threshold when moderator assessed NOT REACHED (higher bar)"
-    )
+     )
     reprompt_agreement_threshold: float = Field(
         default=0.70, ge=0, le=1,
         description="Agreement pct (0-1) at which moderator is reprompted to reconsider"
-    )
+     )
 
 
 class ContextConfig(BaseModel):
@@ -83,16 +81,15 @@ class Config(BaseSettings):
             ModelConfig(name="gemma4:31b"),
             ModelConfig(name="gemma4:26b"),
             ModelConfig(name="gemma4:e4b"),
-        ]
-    )
+         ]
+     )
     moderator: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             name="qwen3.6:35b-a3b", temperature=0.5, max_tokens=2048
-        )
-    )
+         )
+     )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
-    consensus: ConsensusConfig = Field(default_factory=ConsensusConfig)
     discussion: DiscussionConfig = Field(default_factory=DiscussionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)

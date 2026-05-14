@@ -823,8 +823,8 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         sim_matrix = np.array(sim["matrix"])
                         sim_names = sim["model_names"]
 
-                if self.config.consensus.mode == "moderator_decides":
-                    if self.config.consensus.strictness == "main_point":
+                if self.config.discussion.mode == "moderator_decides":
+                    if self.config.discussion.strictness == "main_point":
                         verdict = self._check_main_point_consensus(attributed)
                         consensus_reached = False   # default, updated below if needed
 
@@ -862,7 +862,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             percentage=_agreement_pct,
                             agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
                             total_pairs=_total_pairs,
-                            method=self.config.consensus.method,
+                            method=self.config.discussion.consensus_method,
                            )
                     else:
                         consensus_reached = (
@@ -883,7 +883,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             percentage=_agreement_pct,
                             agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
                             total_pairs=_total_pairs,
-                            method=self.config.consensus.method,
+                            method=self.config.discussion.consensus_method,
                            )
                 else:
                     consensus_result = await self._check_consensus(round_num)

@@ -305,7 +305,7 @@ class TestConsensusResultInModeratorMode:
     @pytest.mark.asyncio
     async def test_consensus_result_set_main_point_reached(self):
         """moderator_decides + main_point: verdict REACHED -> consensus_result is set."""
-        from core.config import ConsensusConfig
+        from core.config import DiscussionConfig
         config = Config(
             models=[
                 ModelConfig(name="model1"),
@@ -314,7 +314,7 @@ class TestConsensusResultInModeratorMode:
             discussion=DiscussionConfig(max_rounds=1),
             context=ContextConfig(mode="summary_only"),
         )
-        config.consensus = ConsensusConfig(mode="moderator_decides", strictness="main_point")
+        config.discussion = DiscussionConfig(mode="moderator_decides", strictness="main_point")
 
         session = Session(prompt="test prompt", config={})
         orchestrator = DiscussionOrchestrator(
@@ -329,7 +329,7 @@ class TestConsensusResultInModeratorMode:
     @pytest.mark.asyncio
     async def test_consensus_result_set_main_point_not_reached(self):
         """moderator_decides + main_point: verdict NOT_REACHED -> consensus_result should be set."""
-        from core.config import ConsensusConfig
+        from core.config import DiscussionConfig
         config = Config(
             models=[
                 ModelConfig(name="model1"),
@@ -338,7 +338,7 @@ class TestConsensusResultInModeratorMode:
             discussion=DiscussionConfig(max_rounds=1),
             context=ContextConfig(mode="summary_only"),
         )
-        config.consensus = ConsensusConfig(mode="moderator_decides", strictness="main_point")
+        config.discussion = DiscussionConfig(mode="moderator_decides", strictness="main_point")
 
         session = Session(prompt="test prompt", config={})
         orchestrator = DiscussionOrchestrator(
