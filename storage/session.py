@@ -81,6 +81,7 @@ class Session:
         self.final_review: str | None = None
 
     def add_response(self, model: str, content: str, round_num: int, position: int, response_time_s: float | None = None) -> Response:
+        """Record a model response for a given round."""
         response = Response(
             model=model,
             content=content,
@@ -94,6 +95,7 @@ class Session:
         return response
 
     def add_human_response(self, content: str, round_num: int, position: int) -> Response:
+        """Record a human-in-the-loop response for a given round."""
         response = Response(
             model="human",
             content=content,
@@ -109,6 +111,7 @@ class Session:
         return [r for r in self.human_responses if r.round == round_num]
 
     def add_summary(self, round_num: int, summary: str) -> RoundSummary:
+        """Record the model's summary for a specific round."""
         round_summary = RoundSummary(
             round=round_num,
             summary=summary,
@@ -153,6 +156,7 @@ class Session:
         self.updated_at = datetime.now().isoformat()
 
     def add_similarity_matrix(self, round_num: int, matrix: list[list[float]], model_names: list[str]):
+        """Store the similarity matrix from the SimilarityEngine."""
         matrix_entry = {
             "round": round_num,
             "matrix": matrix,
@@ -163,6 +167,7 @@ class Session:
         self.updated_at = datetime.now().isoformat()
 
     def get_similarity_matrix(self, round_num: int) -> dict | None:
+        """Retrieve the stored similarity matrix for a specific round."""
         for m in self.similarity_matrices:
             if m["round"] == round_num:
                 return m
@@ -173,31 +178,37 @@ class Session:
         self.updated_at = datetime.now().isoformat()
 
     def get_round_responses(self, round_num: int) -> list[Response]:
+        """Get all responses for a specific round."""
         return [r for r in self.responses if r.round == round_num]
 
     def get_current_round_responses(self) -> list[Response]:
+        """Get responses for the current round (latest completed)."""
         if self.completed_rounds == 0:
             return []
         return self.get_round_responses(self.completed_rounds)
 
     def get_latest_summary(self) -> str | None:
+        """Get the summary for the latest round."""
         if not self.summaries:
             return None
         return self.summaries[-1].summary
 
     def get_summary(self, round_num: int) -> str | None:
+        """Get the summary for a specific round."""
         for s in self.summaries:
             if s.round == round_num:
                 return s.summary
         return None
 
     def get_attributed_summary(self, round_num: int) -> AttributedSummary | None:
+        """Get the attributed summary for a specific round."""
         for s in self.attributed_summaries:
             if s.round == round_num:
                 return s
         return None
 
     def get_latest_attributed_summary(self) -> AttributedSummary | None:
+        """Get the attributed summary for the latest round."""
         if not self.attributed_summaries:
             return None
         return self.attributed_summaries[-1]
@@ -245,6 +256,7 @@ class Session:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Session":
+        """Deserialize a Session from a dictionary."""
         session = cls(
             prompt=data["prompt"],
             config=data.get("config_snapshot", {}),
@@ -277,12 +289,14 @@ class SessionManager:
         return self.sessions_dir / f"{session_id}.json"
 
     async def save(self, session: Session) -> Path:
+        """Save a session to disk as JSON."""
         path = self._get_session_path(session.id)
         async with aiofiles.open(path, "w") as f:
             await f.write(json.dumps(session.to_dict(), indent=2))
         return path
 
     async def load(self, session_id: str) -> Session | None:
+        """Load a session from disk by session ID."""
         path = self._get_session_path(session_id)
         if not path.exists():
             return None
@@ -291,6 +305,7 @@ class SessionManager:
         return Session.from_dict(data)
 
     async def list_sessions(self) -> list[dict]:
+        """List all saved sessions sorted by updated_at."""
         sessions = []
         for path in self.sessions_dir.glob("*.json"):
             async with aiofiles.open(path, "r") as f:
@@ -309,6 +324,7 @@ class SessionManager:
         return sorted(sessions, key=lambda s: s["created_at"], reverse=True)
 
     async def delete(self, session_id: str) -> bool:
+        """Delete a session from disk by session ID."""
         path = self._get_session_path(session_id)
         if path.exists():
             path.unlink()

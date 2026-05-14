@@ -31,6 +31,20 @@ class SimilarityEngine:
         self._cache_order: list[str] = []  # FIFO ordering for eviction
 
     async def get_embedding(self, text: str) -> list[float]:
+        """Generate an embedding vector for the given text.
+        
+        Returns a zero vector for empty text, uses caching when available,
+        and gracefully falls back to a zero vector if the Ollama API fails.
+        
+        Args:
+            text: The text to embed.
+            
+        Returns:
+            A list of floats representing the text embedding.
+            
+        Raises:
+            RuntimeError: If embeddings have been disabled after a failure.
+        """
         if not self.use_embeddings:
             raise RuntimeError("Embeddings are disabled")
 

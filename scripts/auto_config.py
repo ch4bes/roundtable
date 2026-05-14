@@ -80,10 +80,7 @@ def parse_size(size_str: str) -> float:
 
 
 def select_models(all_models: list[dict]) -> list[dict]:
-    """Let user manually select which models to include.
-    
-    Excludes embedding models since they cannot participate in text discussions.
-    """
+    """Let user manually select which models to include. Excludes embedding models."""
     # Filter out embedding models - they can't participate in text discussions
     eligible_models = filter_out_embedding_models(all_models)
     
@@ -214,6 +211,7 @@ def filter_out_embedding_models(models: list[dict]) -> list[dict]:
 
 
 def prompt_with_default(prompt_text: str, default: int) -> int:
+    """Prompt user for an integer with a default value."""
     """Prompt user with a default value."""
     user_input = input(f"{prompt_text} (default: {default}): ").strip()
     if user_input == "":
@@ -226,6 +224,7 @@ def prompt_with_default(prompt_text: str, default: int) -> int:
 
 
 def prompt_float_with_default(prompt_text: str, default: float) -> float:
+    """Prompt user for a float with a default value."""
     """Prompt user with a default float value."""
     user_input = input(f"{prompt_text} (default: {default}): ").strip()
     if user_input == "":
@@ -273,10 +272,7 @@ def select_from_options(prompt_text: str, options: list[tuple[str, str]], defaul
 
 
 def select_moderator(all_models: list[dict]) -> dict:
-    """Let user select a moderator from available Ollama models.
-    
-    Excludes embedding models since they cannot generate text responses.
-    """
+    """Let user select which model will act as the discussion moderator."""
     # Filter out embedding models - they can't generate text
     eligible_models = filter_out_embedding_models(all_models)
     
@@ -309,7 +305,7 @@ def select_moderator(all_models: list[dict]) -> dict:
 
 
 def configure_basic(all_models: list[dict]) -> dict:
-    """Basic configuration - model selection."""
+    """Basic configuration: select models and moderator."""
     print("\n" + "=" * 50)
     print("STEP 1: SELECT MODELS")
     print("=" * 50)
@@ -327,7 +323,7 @@ def configure_basic(all_models: list[dict]) -> dict:
 
 
 def configure_standard(all_models: list[dict], basic_result: dict) -> dict:
-    """Standard configuration - discussion settings."""
+    """Standard configuration: basic + rounds, consensus, and human options."""
     print("\n" + "=" * 50)
     print("STEP 2: DISCUSSION SETTINGS")
     print("=" * 50)
@@ -347,7 +343,7 @@ def configure_standard(all_models: list[dict], basic_result: dict) -> dict:
 
 
 def configure_advanced(standard_result: dict) -> dict:
-    """Advanced configuration - context mode and discussion flow."""
+    """Advanced configuration: context mode and discussion flow options."""
     print("\n" + "=" * 50)
     print("STEP 3: CONTEXT & FLOW")
     print("=" * 50)
@@ -396,7 +392,7 @@ def configure_advanced(standard_result: dict) -> dict:
 
 
 def configure_all(advanced_result: dict) -> dict:
-    """All options - model params, consensus, and storage."""
+    """All options: model params, consensus, and storage settings."""
     print("\n" + "=" * 50)
     print("STEP 4: ADVANCED OPTIONS")
     print("=" * 50)
