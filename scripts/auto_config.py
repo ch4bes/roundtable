@@ -185,7 +185,7 @@ def detect_embedding_dimension(model_name: str, base_url: str = "http://localhos
         return None
     
     try:
-        with httpx.Client(timeout=30.0) as client:
+        with httpx.Client(timeout=60.0) as client:
             response = client.post(
                 f"{base_url}/api/embeddings",
                 json={"model": model_name, "prompt": "test"},
