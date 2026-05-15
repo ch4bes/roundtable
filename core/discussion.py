@@ -707,15 +707,32 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
                     print(f"[Round {round_num}] {model_name} responding...")
 
-                    generated = await self.ollama.generate(
-                        model=model_name,
-                        prompt=context,
-                        system=ParticipantPrompt.system(),
-                        temperature=model_config_obj.temperature,
-                        max_tokens=model_config_obj.max_tokens,
-                        num_ctx=model_config_obj.num_ctx,
-                        images=self.session.images,
-                    )
+                    # Retry logic for empty responses
+                    max_retries = 2
+                    retry_count = 0
+                    generated = None
+                    
+                    while retry_count <= max_retries:
+                        generated = await self.ollama.generate(
+                            model=model_name,
+                            prompt=context,
+                            system=ParticipantPrompt.system(),
+                            temperature=model_config_obj.temperature,
+                            max_tokens=model_config_obj.max_tokens,
+                            num_ctx=model_config_obj.num_ctx,
+                            images=self.session.images,
+                        )
+                        
+                        # Check if response is empty
+                        if generated.response and generated.response.strip():
+                            break  # Got valid response
+                        
+                        retry_count += 1
+                        if retry_count <= max_retries:
+                            print(f"[Round {round_num}] {model_name} returned empty response, retrying ({retry_count}/{max_retries})...")
+                        else:
+                            print(f"[Round {round_num}] {model_name} still returned empty after {max_retries} retries, proceeding with empty content")
+                    
                     response_text = generated
 
                     response_time_s = None
@@ -863,8 +880,8 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                                     # Check if the original text said NOT REACHED
                                     if re.search(r'consensus\s*:\s*not\s*reached', combined_text) or \
                                        re.search(r'consensus\s+not\s+reached', combined_text):
-                                        print(f"[Warning] Reprompt returned REACHED but original assessment said NOT REACHED")
-                                        print(f"  - Keeping original NOT REACHED assessment")
+                                        print("[Warning] Reprompt returned REACHED but original assessment said NOT REACHED")
+                                        print("  - Keeping original NOT REACHED assessment")
                                         # Don't update consensus_reached or consensus_assessment - keep original
                                     else:
                                         consensus_reached = True
