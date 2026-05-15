@@ -128,10 +128,41 @@ class SimilarityEngine:
         if n == 0:
             return SimilarityResult(matrix=np.array([]), model_names=[])
 
+        # Filter out empty texts and track which models have empty content
+        valid_indices = []
+        valid_texts = []
+        valid_names = []
+        empty_models = []
+        for i, (text, name) in enumerate(zip(texts, model_names)):
+            if text and text.strip():
+                valid_indices.append(i)
+                valid_texts.append(text)
+                valid_names.append(name)
+            else:
+                empty_models.append(name)
+
+        if empty_models:
+            print(f"Warning: {len(empty_models)} model(s) returned empty content: {', '.join(empty_models)}. Using zero similarity for these.")
+
+        # If all texts are empty, return a matrix with zeros
+        if not valid_texts:
+            return SimilarityResult(matrix=np.zeros((n, n)), model_names=model_names)
+
         if self.use_embeddings:
             try:
-                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in texts])
-                return await self._build_similarity_matrix(texts, model_names, embeddings)
+                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in valid_texts])
+                # Build full matrix with zero vectors for empty texts
+                full_embeddings = []
+                emb_idx = 0
+                for i in range(n):
+                    if i in valid_indices:
+                        full_embeddings.append(embeddings[emb_idx])
+                        emb_idx += 1
+                    else:
+                        # Use zero vector for empty text
+                        dim = self._dimension if self._dimension else self._default_dimension
+                        full_embeddings.append([0.0] * dim)
+                return await self._build_similarity_matrix(texts, model_names, full_embeddings)
             except (httpx.HTTPError, RuntimeError) as e:
                 print(f"Warning: Embedding generation failed ({e}), falling back to text-based similarity")
                 self.use_embeddings = False
