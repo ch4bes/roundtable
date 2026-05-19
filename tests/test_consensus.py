@@ -107,6 +107,47 @@ class TestClusteringConsensus:
         assert result.reached is True
         assert result.percentage == 100.0
 
+    def test_transitive_chain_of_three(self):
+        """Issue #50: A-B=0.9, B-C=0.9, A-C=0.6, threshold=0.7.
+
+        All three should form a single cluster via transitive connection.
+        """
+        detector = ConsensusDetector(threshold=0.7, method="clustering")
+        matrix = np.array(
+             [
+                 [1.0, 0.9, 0.6],
+                 [0.9, 1.0, 0.9],
+                 [0.6, 0.9, 1.0],
+             ]
+         )
+
+        result = detector.detect(matrix)
+
+        assert result.reached is True
+        assert result.percentage == 100.0
+        assert result.details["clusters"] == [3]
+
+    def test_transitive_chain_of_four(self):
+        """A-B=0.85, B-C=0.85, C-D=0.85, all others 0.4, threshold=0.7.
+
+        All four should form a single cluster via transitive chain A-B-C-D.
+        """
+        detector = ConsensusDetector(threshold=0.7, method="clustering")
+        matrix = np.array(
+             [
+                 [1.0, 0.85, 0.4, 0.4],
+                 [0.85, 1.0, 0.85, 0.4],
+                 [0.4, 0.85, 1.0, 0.85],
+                 [0.4, 0.4, 0.85, 1.0],
+             ]
+         )
+
+        result = detector.detect(matrix)
+
+        assert result.reached is True
+        assert result.percentage == 100.0
+        assert result.details["clusters"] == [4]
+
     def test_multiple_clusters(self):
         detector = ConsensusDetector(threshold=0.85, method="clustering")
         matrix = np.array(

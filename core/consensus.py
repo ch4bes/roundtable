@@ -1,6 +1,7 @@
 import numpy as np
-from typing import Literal
+from typing import Literal, Deque
 from dataclasses import dataclass
+from collections import deque
 
 
 @dataclass
@@ -113,23 +114,33 @@ class ConsensusDetector:
         )
 
     def _cluster_responses(self, similarity_matrix: np.ndarray) -> list[list[int]]:
+        """Find connected components using BFS over the threshold-binary graph.
+
+        If A is similar to B (>= threshold) and B is similar to C, then A, B,
+        and C all belong to the same cluster even if A and C are not directly similar.
+        """
         n = similarity_matrix.shape[0]
         visited = [False] * n
-        clusters = []
+        clusters: list[list[int]] = []
 
-        for i in range(n):
-            if not visited[i]:
-                cluster = [i]
-                visited[i] = True
-                for j in range(i + 1, n):
-                    if not visited[j] and similarity_matrix[i, j] >= self.threshold:
-                        cluster.append(j)
-                        visited[j] = True
-                clusters.append(cluster)
+        for start in range(n):
+            if visited[start]:
+                continue
 
-        unvisited = [i for i in range(n) if not visited[i]]
-        for i in unvisited:
-            clusters.append([i])
+            # BFS from this unvisited node
+            cluster: list[int] = []
+            queue: Deque[int] = deque([start])
+            visited[start] = True
+
+            while queue:
+                node = queue.popleft()
+                cluster.append(node)
+                for neighbour in range(n):
+                    if not visited[neighbour] and similarity_matrix[node, neighbour] >= self.threshold:
+                        visited[neighbour] = True
+                        queue.append(neighbour)
+
+            clusters.append(cluster)
 
         return clusters
 
