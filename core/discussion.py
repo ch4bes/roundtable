@@ -13,6 +13,7 @@ from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .consensus import ConsensusDetector, ConsensusResult
 from .input_reader import InputBuffer
+from .tools import create_tool_executor, get_available_tools
 from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
 from storage.session import Session, SessionManager, Response
 
@@ -250,16 +251,51 @@ class DiscussionOrchestrator:
         else:
             prompt = ModeratorPrompt.template(responses_data, round_num)
 
-        response = await self.ollama.generate(
-            model=self.config.moderator.name,
-            prompt=prompt,
-            system=ModeratorPrompt.system(threshold),
-            temperature=self.config.moderator.temperature,
-            max_tokens=self.config.moderator.max_tokens,
-            num_ctx=self.config.moderator.num_ctx,
-        )
-
-        full_text = response.response
+        # Check if web search is enabled for the moderator
+        use_tools = self.config.tools.web_search.enabled
+        
+        # Get list of tool names for the system prompt
+        tool_names = ["web_search"] if use_tools else None
+        
+        if use_tools:
+            # Use chat method with tools
+            tools_config = self.config.tools.model_dump()
+            tools = get_available_tools(tools_config)
+            tool_executor = create_tool_executor(tools_config)
+            
+            messages = [
+                {"role": "system", "content": ModeratorPrompt.system(threshold, tools=tool_names)},
+                {"role": "user", "content": prompt},
+            ]
+            
+            response = await self.ollama.chat(
+                model=self.config.moderator.name,
+                messages=messages,
+                tools=tools if tools else None,
+                tool_executor=tool_executor,
+                temperature=self.config.moderator.temperature,
+                max_tokens=self.config.moderator.max_tokens,
+                num_ctx=self.config.moderator.num_ctx,
+            )
+            
+            full_text = response.message
+            
+            # Log if tools were used
+            if response.tool_calls:
+                print(f"[Round {round_num}] Moderator used {len(response.tool_calls)} tool call(s)")
+                for tc in response.tool_calls:
+                    print(f"  - {tc.name}: {tc.arguments.get('query', 'N/A')}")
+        else:
+            # Use generate method (no tools)
+            response = await self.ollama.generate(
+                model=self.config.moderator.name,
+                prompt=prompt,
+                system=ModeratorPrompt.system(threshold),
+                temperature=self.config.moderator.temperature,
+                max_tokens=self.config.moderator.max_tokens,
+                num_ctx=self.config.moderator.num_ctx,
+            )
+            full_text = response.response
 
         parsed = self._parse_attributed_summary(full_text, all_responses)
 
@@ -303,16 +339,53 @@ class DiscussionOrchestrator:
             all_summaries,
         )
 
-        response = await self.ollama.generate(
-            model=self.config.moderator.name,
-            prompt=user_prompt,
-            system=system_prompt,
-            temperature=self.config.moderator.temperature,
-            max_tokens=self.config.moderator.max_tokens,
-            num_ctx=self.config.moderator.num_ctx,
-        )
+        # Check if web search is enabled for the moderator
+        use_tools = self.config.tools.web_search.enabled
+        
+        # Add tool instructions to system prompt if web search is enabled
+        if use_tools:
+            tool_instructions = """
 
-        return response.response
+TOOLS AVAILABLE:
+You have access to a web search tool that can search Wikipedia for factual information.
+- Use web_search when you need to verify facts, statistics, or dates
+- Search Wikipedia to confirm information before including in your review
+"""
+            system_prompt = system_prompt + tool_instructions
+        
+        if use_tools:
+            # Use chat method with tools
+            tools_config = self.config.tools.model_dump()
+            tools = get_available_tools(tools_config)
+            tool_executor = create_tool_executor(tools_config)
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+            
+            response = await self.ollama.chat(
+                model=self.config.moderator.name,
+                messages=messages,
+                tools=tools if tools else None,
+                tool_executor=tool_executor,
+                temperature=self.config.moderator.temperature,
+                max_tokens=self.config.moderator.max_tokens,
+                num_ctx=self.config.moderator.num_ctx,
+            )
+            
+            return response.message
+        else:
+            # Use generate method (no tools)
+            response = await self.ollama.generate(
+                model=self.config.moderator.name,
+                prompt=user_prompt,
+                system=system_prompt,
+                temperature=self.config.moderator.temperature,
+                max_tokens=self.config.moderator.max_tokens,
+                num_ctx=self.config.moderator.num_ctx,
+            )
+            return response.response
 
     @staticmethod
     def _parse_json_block(text: str) -> dict | None:
@@ -864,28 +937,36 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             threshold = self.config.discussion.consensus_threshold
                             agreement_pct = self._calculate_agreement_percentage(sim_matrix, threshold)
 
-                            if agreement_pct >= (self.config.discussion.reprompt_agreement_threshold * 100):
-                                verdict_label = "NOT REACHED" if verdict is _ConsensusVerdict.NOT_REACHED else "INCONSISTENT"
-                                print(f"[Round {round_num}] High agreement ({agreement_pct:.1f}%) but moderator said {verdict_label}. Reprompting...")
+                            # Option 3: Only reprompt on specific conditions (contradictions), not just similarity
+                            # Check for clear contradictions in the moderator's reasoning
+                            full_text = attributed.full_text if hasattr(attributed, 'full_text') and attributed.full_text else ""
+                            agreement_text = attributed.agreement_analysis if attributed.agreement_analysis else ""
+                            combined_text = (full_text + " " + agreement_text).upper()
+                            
+                            # Only reprompt if there's a CLEAR CONTRADICTION in the moderator's reasoning
+                            has_contradiction = (
+                                re.search(r'(all|everyone|participants)\s+(agree|agree\w*)', agreement_text, re.I) and
+                                re.search(r'consensus\s*:\s*not\s*reached', combined_text)
+                            ) or (
+                                re.search(r'no\s+disagreement', agreement_text, re.I) and
+                                re.search(r'consensus\s*:\s*not\s*reached', combined_text)
+                            )
+                            
+                            if has_contradiction:
+                                print(f"[Round {round_num}] Contradiction detected in moderator reasoning. Reprompting for clarity...")
                                 revised = await self._reprompt_for_consensus(
                                     round_num, attributed, sim_matrix, sim_names
-                                 )
-                                if revised == "REACHED":
-                                    # Validation check: ensure no contradiction with full_text or agreement_analysis
-                                    # The full_text contains the moderator's original assessment
-                                    full_text = attributed.full_text if hasattr(attributed, 'full_text') and attributed.full_text else ""
-                                    agreement_text = attributed.agreement_analysis if attributed.agreement_analysis else ""
-                                    combined_text = (full_text + " " + agreement_text).upper()
-                                    
-                                    # Check if the original text said NOT REACHED
-                                    if re.search(r'consensus\s*:\s*not\s*reached', combined_text) or \
-                                       re.search(r'consensus\s+not\s+reached', combined_text):
-                                        print("[Warning] Reprompt returned REACHED but original assessment said NOT REACHED")
-                                        print("  - Keeping original NOT REACHED assessment")
-                                        # Don't update consensus_reached or consensus_assessment - keep original
-                                    else:
-                                        consensus_reached = True
-                                        attributed.consensus_assessment = "REACHED"
+                                )
+                                # Option 2: Reprompt is advisory only - moderator can consider similarity but decides
+                                # Only update if moderator explicitly changes their decision
+                                if revised and revised != attributed.consensus_assessment:
+                                    print(f"  - Similarity agreement: {agreement_pct:.1f}%")
+                                    print(f"  - Moderator revised to: {revised}")
+                                    attributed.consensus_assessment = revised
+                                    consensus_reached = (revised == "REACHED")
+                            else:
+                                # No contradiction - keep moderator's original decision
+                                print(f"[Round {round_num}] Moderator assessment stands (no contradiction detected)")
 
                          # Build ConsensusResult for TUI state (fix #1.1)
                         _agreement_pct = 0.0

@@ -11,13 +11,27 @@ class ModeratorPrompt:
     """Prompt templates for the discussion moderator role."""
 
     @staticmethod
-    def system(threshold: float = 0.75) -> str:
+    def system(threshold: float = 0.75, tools: list[str] | None = None) -> str:
         """Return the moderator system prompt with the given consensus threshold."""
+        
+        tool_instructions = ""
+        if tools and "web_search" in tools:
+            tool_instructions = """
+
+TOOLS AVAILABLE:
+You have access to a web search tool that can search Wikipedia for factual information.
+- Use web_search when participants make factual claims that you want to verify
+- Use web_search when you need to look up statistics, dates, or factual information
+- Before stating something as fact, consider using web_search to verify
+
+When you use the tool, it will return search results from Wikipedia that you can use to verify claims.
+"""
+        
         return f"""You are a neutral discussion moderator. Your task is to:
 1. Summarize each participant's main points (attributed to them)
 2. Analyze ALL clusters in the similarity matrix to determine agreement
 3. Identify the MAIN QUESTION being asked and determine if participants agree on the MAIN ANSWER
-4. Provide a SINGLE definitive consensus assessment
+4. Provide a SINGLE definitive consensus assessment{tool_instructions}
 
 CRITICAL RULES:
 - Analyze the FULL similarity matrix (ALL pairs, not just high-similarity ones) before forming any conclusion

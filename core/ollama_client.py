@@ -3,8 +3,15 @@ import httpx
 import json
 import sys
 from pathlib import Path
-from typing import AsyncGenerator
-from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Callable
+
+from .llm_client import (
+    LLMClient,
+    ChatResponse,
+    EmbeddingResponse,
+    GenerationResponse,
+    ToolCall,
+)
 
 # ---------------------------------------------------------------------------
 # Allowed image file types and their magic-byte signatures
@@ -61,23 +68,7 @@ def _is_valid_image_path(path: Path) -> tuple[bool, str]:
     return False, f"file header does not match any supported image format"
 
 
-@dataclass
-class GenerationResponse:
-    response: str
-    model: str
-    done: bool
-    total_duration: int | None = None
-    prompt_eval_count: int | None = None
-    eval_count: int | None = None
-
-
-@dataclass
-class EmbeddingResponse:
-    embedding: list[float]
-    model: str
-
-
-class OllamaClient:
+class OllamaClient(LLMClient):
     def __init__(self, base_url: str = "http://localhost:11434", timeout: int = 120):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -301,3 +292,162 @@ class OllamaClient:
         except Exception as e:
             print(f"Warning: Ollama health check failed: {e}", file=sys.stderr)
             return False
+
+    async def chat(
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        tools: list[dict] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 2048,
+        num_ctx: int = 8192,
+        tool_executor: Callable[[str, dict], str] | None = None,
+        max_tool_calls: int = 5,
+    ) -> ChatResponse:
+        """
+        Send a chat request to Ollama with optional tool support.
+        
+        If tools are provided and the model calls them, this will automatically
+        execute the tools and continue the conversation until no more tool calls
+        are made or max_tool_calls is reached.
+        
+        :param model: Model name
+        :param messages: List of message dicts with 'role' and 'content' keys
+        :param tools: List of tool definitions (Ollama format)
+        :param tool_executor: Function to execute tool calls (name, arguments) -> result
+        :param max_tool_calls: Maximum number of tool call loops
+        :returns: ChatResponse with message and optional tool_calls
+        """
+        client = await self._get_client()
+        
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": num_ctx,
+            },
+        }
+        
+        # Add 'think' param for models that support it
+        if self._supports_think_param(model):
+            payload["think"] = False
+        
+        if tools:
+            payload["tools"] = tools
+        
+        tool_call_count = 0
+        all_tool_calls = []
+        
+        while tool_call_count < max_tool_calls:
+            try:
+                response = await client.post("/api/chat", json=payload)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                error_msg = e.response.text
+                try:
+                    error_data = json.loads(error_msg)
+                    ollama_error = error_data.get("error", "Unknown error")
+                    raise RuntimeError(
+                        f"Ollama chat API error: {ollama_error}\n"
+                        f"Model: {model}\n"
+                        f"This may indicate the model doesn't exist or doesn't support tools."
+                    ) from e
+                except (json.JSONDecodeError, ValueError):
+                    raise RuntimeError(
+                        f"Ollama chat API error: HTTP {e.response.status_code}\n"
+                        f"Response: {error_msg[:500]}\n"
+                        f"Model: {model}"
+                    ) from e
+            
+            data = response.json()
+            
+            # Extract message content
+            message = data.get("message", {})
+            content = message.get("content", "")
+            
+            # Extract tool calls
+            raw_tool_calls = message.get("tool_calls", [])
+            tool_calls = []
+            for tc in raw_tool_calls:
+                func = tc.get("function", {})
+                tool_calls.append(ToolCall(
+                    id=tc.get("id", ""),
+                    name=func.get("name", ""),
+                    arguments=func.get("arguments", {}),
+                ))
+            
+            # If no tool calls, we're done
+            if not tool_calls:
+                return ChatResponse(
+                    message=content,
+                    model=data.get("model", model),
+                    done=data.get("done", True),
+                    tool_calls=all_tool_calls if all_tool_calls else None,
+                    total_duration=data.get("total_duration"),
+                    prompt_eval_count=data.get("prompt_eval_count"),
+                    eval_count=data.get("eval_count"),
+                )
+            
+            # If we have tool calls but no executor, return what we have
+            if not tool_executor:
+                return ChatResponse(
+                    message=content,
+                    model=data.get("model", model),
+                    done=data.get("done", True),
+                    tool_calls=tool_calls,
+                    total_duration=data.get("total_duration"),
+                    prompt_eval_count=data.get("prompt_eval_count"),
+                    eval_count=data.get("eval_count"),
+                )
+            
+            # Execute tool calls and add results to messages
+            all_tool_calls.extend(tool_calls)
+            
+            # Add assistant message with tool calls to conversation
+            messages = list(messages)  # Don't modify original
+            messages.append({
+                "role": "assistant",
+                "content": content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments),
+                        }
+                    }
+                    for tc in tool_calls
+                ],
+            })
+            
+            # Execute each tool and add results
+            for tc in tool_calls:
+                try:
+                    tool_result = tool_executor(tc.name, tc.arguments)
+                except Exception as e:
+                    tool_result = json.dumps({"error": str(e)})
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": tool_result,
+                })
+            
+            tool_call_count += 1
+            
+            # Continue loop to get next response with tool results
+        
+        # Max tool calls reached
+        return ChatResponse(
+            message=content,
+            model=data.get("model", model),
+            done=True,
+            tool_calls=all_tool_calls,
+            total_duration=data.get("total_duration"),
+            prompt_eval_count=data.get("prompt_eval_count"),
+            eval_count=data.get("eval_count"),
+        )

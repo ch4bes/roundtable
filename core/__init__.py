@@ -8,14 +8,14 @@ from .tools import WebSearchTool, create_tool_executor, get_available_tools
 from .exceptions import DimensionMismatchError
 
 __all__ = [
-    "Config",
-    "LLMClient",
-    "OllamaClient",
-    "DiscussionOrchestrator",
-    "SimilarityEngine",
-    "ConsensusDetector",
-    "WebSearchTool",
-    "create_tool_executor",
-    "get_available_tools",
-    "DimensionMismatchError",
+     "Config",
+     "LLMClient",
+     "OllamaClient",
+     "DiscussionOrchestrator",
+     "SimilarityEngine",
+     "ConsensusDetector",
+     "WebSearchTool",
+     "create_tool_executor",
+     "get_available_tools",
+     "DimensionMismatchError",
 ]

@@ -70,6 +70,21 @@ class HumanParticipantConfig(BaseModel):
     display_name: str = "Human"
 
 
+class WebSearchConfig(BaseModel):
+    """Configuration for web search tool."""
+    enabled: bool = False
+    timeout: int = 30
+
+
+class ToolsConfig(BaseModel):
+    """Configuration for tools that models can use during discussions."""
+    web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    # Future tools could be added here:
+    # - code_execution: for running code snippets
+    # - file_search: for searching local files
+    # - etc.
+
+
 class Config(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     models: list[ModelConfig] = Field(
@@ -90,6 +105,7 @@ class Config(BaseSettings):
      )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
     human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     discussion: DiscussionConfig = Field(default_factory=DiscussionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
