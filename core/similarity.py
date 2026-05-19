@@ -4,6 +4,7 @@ import re
 import numpy as np
 from dataclasses import dataclass
 from .ollama_client import OllamaClient, EmbeddingResponse
+from .exceptions import DimensionMismatchError
 
 
 @dataclass
@@ -98,15 +99,13 @@ class SimilarityEngine:
     def cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """Compute cosine similarity between two vectors.
         
-            Handles empty or mismatched vectors gracefully.
-            """
+        Raises DimensionMismatchError if vectors have different lengths.
+        Returns 0.0 for empty inputs.
+        """
         if not vec1 or not vec2:
             return 0.0
         if len(vec1) != len(vec2):
-            # Pad shorter vector with zeros to match lengths
-            max_len = max(len(vec1), len(vec2))
-            vec1 = vec1 + [0.0] * (max_len - len(vec1))
-            vec2 = vec2 + [0.0] * (max_len - len(vec2))
+            raise DimensionMismatchError(len(vec1), len(vec2))
 
         v1 = np.array(vec1)
         v2 = np.array(vec2)
@@ -188,7 +187,10 @@ class SimilarityEngine:
             matrix[i, i] = 1.0
             for j in range(i + 1, n):
                 if embeddings is not None:
-                    sim = self.cosine_similarity(embeddings[i], embeddings[j])
+                    try:
+                        sim = self.cosine_similarity(embeddings[i], embeddings[j])
+                    except DimensionMismatchError:
+                        sim = self._text_similarity(texts[i], texts[j])
                 else:
                     sim = self._text_similarity(texts[i], texts[j])
                 matrix[i, j] = sim
@@ -231,7 +233,10 @@ class SimilarityEngine:
                 pairs = []
                 for i in range(n):
                     for j in range(i + 1, n):
-                        sim = self.cosine_similarity(embeddings[i], embeddings[j])
+                        try:
+                            sim = self.cosine_similarity(embeddings[i], embeddings[j])
+                        except DimensionMismatchError:
+                            sim = self._text_similarity(texts[i], texts[j])
                         pairs.append((i, j, sim))
 
                 return pairs

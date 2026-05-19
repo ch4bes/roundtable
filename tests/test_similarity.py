@@ -2,6 +2,7 @@ import httpx
 import pytest
 from core.similarity import SimilarityEngine
 from core.ollama_client import EmbeddingResponse
+from core.exceptions import DimensionMismatchError
 
 
 class MockOllamaClient:
@@ -53,6 +54,16 @@ class TestCosineSimilarity:
         vec2 = [1.0, 1.0, 0.0]
         sim = engine.cosine_similarity(vec1, vec2)
         assert 0.5 < sim < 0.8
+
+    def test_cosine_similarity_raises_on_dimension_mismatch(self):
+        engine = SimilarityEngine.__new__(SimilarityEngine)
+        engine.use_embeddings = True
+        vec1 = [1.0, 0.0]
+        vec2 = [1.0, 0.0, 0.0]
+        with pytest.raises(DimensionMismatchError) as exc_info:
+            engine.cosine_similarity(vec1, vec2)
+        assert exc_info.value.dim1 == 2
+        assert exc_info.value.dim2 == 3
 
 
 @pytest.mark.asyncio
@@ -225,3 +236,69 @@ async def test_similarity_embeddings_disabled_after_failure():
     engine.ollama = MockOllamaClientFailing(httpx.HTTPError("should not be called"))
     await engine.calculate_similarity_matrix(["y"], ["m2"])
     assert engine.ollama.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_similarity_matrix_fallback_on_mismatched_embeddings():
+    """The similarity matrix should fall back to text similarity on dimension mismatch."""
+    embeddings = {
+        "text a": [1.0, 0.0],
+        "text b": [1.0, 0.0, 0.0], # Mismatch!
+    }
+    mock_client = MockOllamaClient(embeddings)
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = mock_client
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+
+    # Using a a and b that are exactly identical text for easy Jaccard check
+    texts = ["same text", "same text"]
+    embeddings_mismatched = {
+        "same text": [1.0, 0.0] 
+    }
+    # We need different embeddings for different texts to test mismatch.
+    # But the MockOllamaClient's embeddings() uses prompt as key.
+    # So we need different prompts that return different lengths.
+    
+    texts = ["text a", "text b"]
+    model_names = ["m1", "m2"]
+    
+    # we already defined 'embeddings' dictionary at top of test
+    result = await engine.calculate_similarity_matrix(texts, model_names)
+    
+    # text a and text b are different, so Jaccard will be < 1.0
+    # But they should have SOME similarity if we use words that overlap.
+    # Let's redefine for a clear Jaccard result.
+    
+    embeddings_mismatched = {
+        "hello world": [1.0, 0.0],
+        "hello universe": [1.0, 0.0, 0.0]
+    }
+    mock_client.embeddings_map = embeddings_mismatched
+    
+    result = await engine.calculate_similarity_matrix(["hello world", "hello universe"], model_names)
+    
+    # Jaccard of {"hello", "world"} and {"hello", "universe"} = 1 / 3 = 0.333
+    assert result.matrix[0, 1] == pytest.approx(1/3)
+
+
+@pytest.mark.asyncio
+async def test_pairwise_fallback_on_mismatched_embeddings():
+    """Pairwise similarity should fall back to text similarity on dimension mismatch."""
+    embeddings_mismatched = {
+        "hello world": [1.0, 0.0],
+        "hello universe": [1.0, 0.0, 0.0]
+    }
+    mock_client = MockOllamaClient(embeddings_mismatched)
+    engine = SimilarityEngine.__new__(SimilarityEngine)
+    engine.ollama = mock_client
+    engine.embedding_model = "test-model"
+    engine.use_embeddings = True
+    engine._cache = {}
+    
+    pairs = await engine.calculate_pairwise_similarities(["hello world", "hello universe"])
+    
+    # One pair, similarity should be Jaccard 1/3
+    assert len(pairs) == 1
+    assert pairs[0][2] == pytest.approx(1/3)
