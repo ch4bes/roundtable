@@ -351,7 +351,7 @@ def configure_advanced(standard_result: dict) -> dict:
         "What should models see when responding?",
         [
             ("summary_only", "Moderator summary only"),
-            ("summary_plus_last_n", "Summary + last N responses (default)"),
+            ("summary_plus_last_n", "Summary + last N responses"),
             ("full", "Full discussion history"),
         ],
         default_idx=1
@@ -373,7 +373,7 @@ def configure_advanced(standard_result: dict) -> dict:
         [
             ("sequential", "Rotate through list each round"),
             ("random", "Shuffle order each round"),
-            ("fixed", "Same order every round (default)"),
+            ("fixed", "Same order every round"),
         ],
         default_idx=2
     )
@@ -390,7 +390,7 @@ def configure_advanced(standard_result: dict) -> dict:
 
 
 def configure_all(advanced_result: dict) -> dict:
-    """All options: model params, consensus, and storage settings."""
+    """All options: model params, consensus, storage, and tools settings."""
     print("\n" + "=" * 50)
     print("STEP 4: ADVANCED OPTIONS")
     print("=" * 50)
@@ -467,6 +467,12 @@ def configure_all(advanced_result: dict) -> dict:
     ).strip() or "Share your perspective on: {prompt}"
     human_name = input("Human display name? (default: Human): ").strip() or "Human"
     
+    # Tools (Web Search)
+    print("\n--- Tools (Web Search) ---")
+    print("Enable web search for the moderator to fact-check claims?")
+    print("  Uses curl to query Wikipedia (no API key needed)")
+    web_search_enabled = prompt_yes_no("Enable web search?", False)
+    
     return {
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -483,6 +489,7 @@ def configure_all(advanced_result: dict) -> dict:
         "export_fmt": export_fmt,
         "human_prompt": human_prompt,
         "human_name": human_name,
+        "web_search_enabled": web_search_enabled,
     }
 
 
@@ -559,6 +566,7 @@ def update_config():
             "export_fmt": "md",
             "human_prompt": "Share your perspective on: {prompt}",
             "human_name": "Human",
+            "web_search_enabled": False,
         }
     
     # Build config
@@ -628,6 +636,12 @@ def update_config():
             "prompt": all_result["human_prompt"],
             "display_name": all_result["human_name"],
         },
+        "tools": {
+            "web_search": {
+                "enabled": all_result["web_search_enabled"],
+                "timeout": 30,
+            }
+        },
     }
     
     # Summary
@@ -645,6 +659,11 @@ def update_config():
     print(f"Consensus: {standard_result['consensus_threshold']} ({all_result['consensus_method']})")
     print(f"Context: {advanced_result['context_mode'].replace('_', ' ')}")
     print(f"Human: {'Yes' if standard_result['human_enabled'] else 'No'}")
+    
+    if all_result.get("web_search_enabled"):
+        print("Web Search: Yes (Wikipedia via curl)")
+    else:
+        print("Web Search: No (enable in level 4 for fact-checking)")
     
     if embedding_model:
         print(f"Embedding: {embedding_model}")
