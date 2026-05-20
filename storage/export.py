@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from .session import Session
+from .utils import sanitize_export_path
 import aiofiles
 
 
@@ -85,7 +86,10 @@ class Exporter:
     @staticmethod
     async def export_markdown(session: Session, output_path: str | Path) -> Path:
         """Export a session to a markdown file with discussion content."""
-        output_path = Path(output_path)
+        sessions_dir = Path(
+            session.config_snapshot.get("storage", {}).get("sessions_dir", "./sessions")
+        )
+        output_path = sanitize_export_path(Path(output_path), sessions_dir)
 
         lines = [
             "# LLM Roundtable Discussion",
@@ -193,7 +197,10 @@ class Exporter:
     @staticmethod
     async def export_json(session: Session, output_path: str | Path) -> Path:
         """Export a session to a JSON file with all discussion data."""
-        output_path = Path(output_path)
+        sessions_dir = Path(
+            session.config_snapshot.get("storage", {}).get("sessions_dir", "./sessions")
+        )
+        output_path = sanitize_export_path(Path(output_path), sessions_dir)
         data = session.to_dict()
         data["exported_at"] = datetime.now().isoformat()
 

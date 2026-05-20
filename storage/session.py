@@ -1,10 +1,13 @@
 import json
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 from dataclasses import dataclass, asdict
 import aiofiles
+
+from .utils import sanitize_session_id, validate_path_within
 
 
 @dataclass
@@ -286,7 +289,10 @@ class SessionManager:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_session_path(self, session_id: str) -> Path:
-        return self.sessions_dir / f"{session_id}.json"
+        """Get the file path for a session, with path traversal protection."""
+        safe_name = sanitize_session_id(session_id)
+        path = self.sessions_dir / f"{safe_name}.json"
+        return validate_path_within(self.sessions_dir.resolve(), path.resolve())
 
     async def save(self, session: Session) -> Path:
         """Save a session to disk as JSON."""
