@@ -6,6 +6,60 @@ from pathlib import Path
 from typing import AsyncGenerator
 from dataclasses import dataclass
 
+# ---------------------------------------------------------------------------
+# Allowed image file types and their magic-byte signatures
+# (used to prevent local file disclosure when --image is passed)
+# ---------------------------------------------------------------------------
+_ALLOWED_IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tiff",
+}
+
+# format -> (bytes_prefix, min_read_len)
+_IMAGE_MAGIC: dict[str, tuple[bytes, int]] = {
+    "PNG": (b"\x89PNG", 4),
+    "JPG": (b"\xff\xd8\xff", 3),
+    "WEBP": (b"RIFF", 8),  # RIFF....WEBP
+    "GIF": (b"GIF8", 4),
+    "BMP": (b"BM", 2),
+    "TIFF_LE": (b"II\x2A\x00", 4),
+    "TIFF_BE": (b"MM\x00\x2A", 4),
+}
+
+
+def _is_valid_image_path(path: Path) -> tuple[bool, str]:
+    """Check that *path* looks like a genuine image file.
+
+    Returns ``(True, "")`` when the file passes all checks, or
+    ``(False, reason)`` when validation fails.
+    """
+    # Extension whitelist
+    ext = path.suffix.lower()
+    if ext not in _ALLOWED_IMAGE_EXTENSIONS:
+        return False, f"extension {ext!r} not in allowed set"
+
+    # Magic-byte verification
+    try:
+        with open(path, "rb") as f:
+            # Read enough bytes for the longest header check (WEBP = 8)
+            header = f.read(8)
+    except (OSError, PermissionError) as e:
+        return False, f"cannot read file: {e}"
+
+    for _fmt, (prefix, min_len) in _IMAGE_MAGIC.items():
+        if len(header) >= min_len and header[:len(prefix)] == prefix:
+            # WEBP needs an extra check for the "WEBP" payload tag at offset 8
+            if _fmt == "WEBP" and len(header) >= 12 and header[8:12] != b"WEBP":
+                continue
+            return True, ""
+
+    return False, f"file header does not match any supported image format"
+
 
 @dataclass
 class GenerationResponse:
@@ -84,13 +138,25 @@ class OllamaClient:
             # images can be file paths (will be read and base64 encoded) or base64 strings
             encoded_images = []
             for img in images:
-                if Path(img).exists():
-                    # It's a file path, read and encode
-                    with open(img, "rb") as f:
-                        encoded_images.append(base64.b64encode(f.read()).decode("utf-8"))
-                else:
-                    # Assume it's already base64 encoded
-                    encoded_images.append(img)
+                p = Path(img)
+                if p.exists() and p.is_file():
+                    # Validate before reading to prevent local file disclosure.
+                    ok, reason = _is_valid_image_path(p)
+                    if ok:
+                        with open(p.resolve(), "rb") as f:
+                            encoded_images.append(
+                                base64.b64encode(f.read()).decode("utf-8")
+                            )
+                    else:
+                        print(
+                            f"Warning: Skipping {img!r} - {reason}",
+                            file=sys.stderr,
+                        )
+                    continue
+
+                # Path does not exist or is not a regular file;
+                # assume it's already base64 encoded.
+                encoded_images.append(img)
             if encoded_images:
                 payload["images"] = encoded_images
 
