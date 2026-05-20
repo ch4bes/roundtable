@@ -170,7 +170,7 @@ class TestMatrixExportFormatting:
         import asyncio
         import tempfile
         
-        session = Session(prompt="test question?", config={})
+        session = Session(prompt="test question?", config={"storage": {"sessions_dir": tempfile.gettempdir()}})
         session.add_response("gpt4", "Answer A", 1, 0)
         session.add_response("claude", "Answer A", 1, 1)
         session.add_similarity_matrix(1, [[1.0, 0.95], [0.95, 1.0]], ["gpt4", "claude"])
@@ -215,7 +215,7 @@ class TestMatrixExportFormatting:
         import tempfile
         import json
         
-        session = Session(prompt="test", config={}, session_id="json-test")
+        session = Session(prompt="test", config={"storage": {"sessions_dir": tempfile.gettempdir()}}, session_id="json-test")
         session.add_response("gpt4", "A", 1, 0)
         session.add_response("claude", "A", 1, 1)
         session.add_similarity_matrix(1, [[1.0, 0.8], [0.8, 1.0]], ["gpt4", "claude"])
@@ -236,7 +236,7 @@ class TestMatrixExportFormatting:
         import asyncio
         import tempfile
         
-        session = Session(prompt="test question?", config={}, session_id="final-review-test")
+        session = Session(prompt="test question?", config={"storage": {"sessions_dir": tempfile.gettempdir()}}, session_id="final-review-test")
         session.add_response("gpt4", "Answer A", 1, 0)
         session.add_response("claude", "Answer A", 1, 1)
         session.add_summary(1, "Summary")
