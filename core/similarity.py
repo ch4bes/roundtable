@@ -3,7 +3,7 @@ import httpx
 import re
 import numpy as np
 from dataclasses import dataclass
-from .ollama_client import OllamaClient, EmbeddingResponse
+from .llm_client import LLMClient, EmbeddingResponse
 from .exceptions import DimensionMismatchError
 
 
@@ -16,7 +16,7 @@ class SimilarityResult:
 class SimilarityEngine:
     def __init__(
         self,
-        ollama_client: OllamaClient,
+        ollama_client: LLMClient,
         embedding_model: str = "nomic-embed-text",
         use_embeddings: bool = True,
         dimension: int | None = None,
