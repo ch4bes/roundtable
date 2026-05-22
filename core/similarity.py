@@ -1,10 +1,13 @@
 import asyncio
-import httpx
+import hashlib
 import re
-import numpy as np
 from dataclasses import dataclass
-from .llm_client import LLMClient, EmbeddingResponse
+
+import httpx
+import numpy as np
+
 from .exceptions import DimensionMismatchError
+from .llm_client import EmbeddingResponse, LLMClient
 
 
 @dataclass
@@ -25,23 +28,25 @@ class SimilarityEngine:
         self.embedding_model = embedding_model
         self.use_embeddings = use_embeddings
         self._dimension = dimension
-        self._default_dimension = 1024  # Fallback if dimension not set and can't be auto-detected
+        self._default_dimension = (
+            1024  # Fallback if dimension not set and can't be auto-detected
+        )
         self._cache: dict[str, list[float]] = {}
         self._max_cache_size = 100
         self._cache_order: list[str] = []  # FIFO ordering for eviction
 
     async def get_embedding(self, text: str) -> list[float]:
         """Generate an embedding vector for the given text.
-        
+
         Returns a zero vector for empty text, uses caching when available,
         and gracefully falls back to a zero vector if the Ollama API fails.
-        
+
         Args:
             text: The text to embed.
-            
+
         Returns:
             A list of floats representing the text embedding.
-            
+
         Raises:
             RuntimeError: If embeddings have been disabled after a failure.
         """
@@ -51,18 +56,21 @@ class SimilarityEngine:
         # Handle empty text - return a zero vector to avoid shape mismatches
         if not text or not text.strip():
             dim = self._dimension if self._dimension else self._default_dimension
-            print(f"Warning: Empty text provided for embedding, using zero vector (dim={dim})")
+            print(
+                f"Warning: Empty text provided for embedding, using zero vector (dim={dim})"
+            )
             return [0.0] * dim
 
         # Initialize cache attributes if not present (handles __new__ bypass in tests)
-        if not hasattr(self, '_cache_order'):
+        if not hasattr(self, "_cache_order"):
             self._cache_order = []
-        if not hasattr(self, '_cache'):
+        if not hasattr(self, "_cache"):
             self._cache = {}
-        if not hasattr(self, '_max_cache_size'):
+        if not hasattr(self, "_max_cache_size"):
             self._max_cache_size = 100
 
-        cache_key = f"{self.embedding_model}:{text}"
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
+        cache_key = f"{self.embedding_model}:{text_hash}"
         if cache_key in self._cache:
             self._move_to_end(cache_key)
             return self._cache[cache_key]
@@ -98,7 +106,7 @@ class SimilarityEngine:
 
     def cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """Compute cosine similarity between two vectors.
-        
+
         Raises DimensionMismatchError if vectors have different lengths.
         Returns 0.0 for empty inputs.
         """
@@ -141,7 +149,9 @@ class SimilarityEngine:
                 empty_models.append(name)
 
         if empty_models:
-            print(f"Warning: {len(empty_models)} model(s) returned empty content: {', '.join(empty_models)}. Using zero similarity for these.")
+            print(
+                f"Warning: {len(empty_models)} model(s) returned empty content: {', '.join(empty_models)}. Using zero similarity for these."
+            )
 
         # If all texts are empty, return a matrix with zeros
         if not valid_texts:
@@ -149,7 +159,9 @@ class SimilarityEngine:
 
         if self.use_embeddings:
             try:
-                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in valid_texts])
+                embeddings = await asyncio.gather(
+                    *[self.get_embedding(text) for text in valid_texts]
+                )
                 # Build full matrix with zero vectors for empty texts
                 full_embeddings = []
                 emb_idx = 0
@@ -159,11 +171,19 @@ class SimilarityEngine:
                         emb_idx += 1
                     else:
                         # Use zero vector for empty text
-                        dim = self._dimension if self._dimension else self._default_dimension
+                        dim = (
+                            self._dimension
+                            if self._dimension
+                            else self._default_dimension
+                        )
                         full_embeddings.append([0.0] * dim)
-                return await self._build_similarity_matrix(texts, model_names, full_embeddings)
+                return await self._build_similarity_matrix(
+                    texts, model_names, full_embeddings
+                )
             except (httpx.HTTPError, RuntimeError) as e:
-                print(f"Warning: Embedding generation failed ({e}), falling back to text-based similarity")
+                print(
+                    f"Warning: Embedding generation failed ({e}), falling back to text-based similarity"
+                )
                 self.use_embeddings = False
 
         return await self._build_similarity_matrix(texts, model_names, None)
@@ -176,7 +196,7 @@ class SimilarityEngine:
     ) -> SimilarityResult:
         """
         Build a full NxN symmetric similarity matrix.
-        
+
         If embeddings are provided, uses cosine similarity. Otherwise falls back to
         Jaccard text similarity.
         """
@@ -228,7 +248,9 @@ class SimilarityEngine:
 
         if self.use_embeddings:
             try:
-                embeddings = await asyncio.gather(*[self.get_embedding(text) for text in texts])
+                embeddings = await asyncio.gather(
+                    *[self.get_embedding(text) for text in texts]
+                )
 
                 pairs = []
                 for i in range(n):
@@ -241,7 +263,9 @@ class SimilarityEngine:
 
                 return pairs
             except (httpx.HTTPError, RuntimeError) as e:
-                print(f"Warning: Pairwise embedding failed ({e}), falling back to text-based similarity")
+                print(
+                    f"Warning: Pairwise embedding failed ({e}), falling back to text-based similarity"
+                )
                 self.use_embeddings = False
 
         pairs = []
@@ -254,9 +278,9 @@ class SimilarityEngine:
 
     def clear_cache(self) -> None:
         # Initialize cache attributes if not present (handles __new__ bypass in tests)
-        if not hasattr(self, '_cache'):
+        if not hasattr(self, "_cache"):
             self._cache = {}
-        if not hasattr(self, '_cache_order'):
+        if not hasattr(self, "_cache_order"):
             self._cache_order = []
         self._cache.clear()
         self._cache_order.clear()
