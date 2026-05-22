@@ -16,8 +16,10 @@ from storage.session import Response, Session, SessionManager
 from .config import Config
 from .consensus import ConsensusDetector, ConsensusResult
 from .input_reader import InputBuffer
+from .llm_client import LLMClient
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
+from .summary_parser import SummaryParser
 from .tools import create_tool_executor, get_available_tools
 
 
@@ -46,12 +48,15 @@ class DiscussionOrchestrator:
         progress_callback: Callable[[DiscussionState], Awaitable[None]] | None = None,
         human_input_callback: Callable[[str, int, int], Awaitable[str]] | None = None,
         input_buffer: InputBuffer | None = None,
+        llm_client: LLMClient | None = None,
     ):
         self.config = config
         self.session = session
         self.human_input_callback = human_input_callback
         self.input_buffer = input_buffer
-        self.ollama = OllamaClient(
+        # Accept an injected client (enables testing with mocks and alternative
+        # backends); fall back to OllamaClient when none is provided.
+        self.ollama: LLMClient = llm_client or OllamaClient(
             base_url=config.ollama.base_url,
             timeout=config.ollama.timeout,
         )
@@ -251,7 +256,10 @@ class DiscussionOrchestrator:
         return ""
 
     async def _generate_summary(
-        self, round_num: int, similarity_matrix=None, model_names: list[str] = None
+        self,
+        round_num: int,
+        similarity_matrix: np.ndarray | None = None,
+        model_names: list[str] | None = None,
     ) -> str:
         round_responses = self.session.get_round_responses(round_num)
         human_responses = self.session.get_round_human_responses(round_num)
@@ -325,7 +333,7 @@ class DiscussionOrchestrator:
             )
             full_text = response.response
 
-        parsed = self._parse_attributed_summary(full_text, all_responses)
+        parsed = SummaryParser.parse(full_text, all_responses)
 
         self.session.add_attributed_summary(
             round_num=round_num,
@@ -420,176 +428,19 @@ You have access to a web search tool that can search Wikipedia for factual infor
 
     @staticmethod
     def _parse_json_block(text: str) -> dict | None:
-        """Tier 1: Try to parse JSON block from moderator output."""
-        import re
-
-        json_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group(1))
-                if (
-                    "individual_summaries" in parsed
-                    and "consensus_assessment" in parsed
-                ):
-                    return {
-                        "individual_summaries": parsed.get("individual_summaries", {}),
-                        "agreement_analysis": parsed.get(
-                            "agreement_analysis", "(Not provided)"
-                        ),
-                        "consensus_assessment": parsed.get(
-                            "consensus_assessment", "NOT REACHED"
-                        ),
-                        "confidence": parsed.get("confidence", "MEDIUM"),
-                    }
-            except json.JSONDecodeError:
-                pass  # Fall through to Markdown parsing
-
-        return None
+        """Deprecated: use SummaryParser._parse_json_block instead."""
+        return SummaryParser._parse_json_block(text)
 
     @staticmethod
-    def _parse_markdown_summary(text: str, round_responses: list) -> dict:
-        """Tier 2: Regex-based Markdown parsing (tolerant of LLM variations)."""
-        individual_summaries: dict[str, list[str]] = {}
-        agreement_analysis = ""
-        consensus_assessment = "NOT REACHED"
-        confidence = "MEDIUM"
+    def _parse_markdown_summary(text: str, round_responses: "list[Response]") -> dict:
+        """Deprecated: use SummaryParser._parse_markdown instead."""
+        return SummaryParser._parse_markdown(text, round_responses)
 
-        lines = text.split("\n")
-        current_model = None
-        current_section = None  # Track which major section we're in
-
-        for line in lines:
-            stripped = line.strip()
-
-            # HEADINGS: match 2-5 # with optional spacing
-            heading_match = re.match(r"^#{2,5}\s?(.*)", stripped)
-            if heading_match:
-                heading_text = heading_match.group(1).strip()
-                heading_level = len(heading_match.group(0)) - len(
-                    heading_match.group(0).lstrip("#")
-                )
-
-                # 3+ hashes (###) = individual model section
-                if heading_level >= 3 and heading_text:
-                    current_model = heading_text
-                    individual_summaries[current_model] = []
-                    current_section = "individual"
-
-                # 2 hashes (##) = major section headings
-                elif heading_level == 2 and heading_text:
-                    current_model = None
-                    heading_lower = heading_text.lower()
-
-                    if "final" in heading_lower and "consensus" in heading_lower:
-                        current_section = "final_consensus"
-                    elif "agreement" in heading_lower:
-                        current_section = "agreement"
-                    elif "similarity" in heading_lower:
-                        current_section = "similarity"
-                    elif "individual" in heading_lower and "summary" in heading_lower:
-                        current_section = "individual_summaries"
-                    else:
-                        current_section = "other"
-                else:
-                    current_section = None
-                    current_model = None
-
-                continue  # Skip to next line after processing heading
-
-            # BULLETS: support - * • —
-            if current_model:
-                bullet_match = re.match(r"^[-*•–—]\s+(.*)", stripped)
-                if bullet_match:
-                    individual_summaries[current_model].append(
-                        bullet_match.group(1).strip()
-                    )
-                    continue
-
-            # CONSENSUS VERDICT: Parse in Final Consensus section, or fall back to Consensus Assessment
-            # if no Final Consensus section exists
-            if current_section == "final_consensus":
-                # Only look in the Final Consensus section for the definitive verdict
-                if re.search(r"consensus\s*:\s*", stripped, re.I):
-                    if "NOT REACHED" in stripped.upper():
-                        consensus_assessment = "NOT REACHED"
-                    elif "REACHED" in stripped.upper():
-                        consensus_assessment = "REACHED"
-            elif (
-                current_section != "final_consensus"
-                and consensus_assessment == "NOT REACHED"
-            ):
-                # Fallback: if no Final Consensus section, look for Consensus Assessment anywhere
-                # Only applies if we haven't found a definitive verdict yet (default is NOT REACHED)
-                if re.search(r"consensus\s+assessment\s*:\s*", stripped, re.I):
-                    if "NOT REACHED" in stripped.upper():
-                        consensus_assessment = "NOT REACHED"
-                    elif "REACHED" in stripped.upper():
-                        consensus_assessment = "REACHED"
-
-            # CONFIDENCE: Can be in Final Consensus section
-            if re.search(r"confidence\s*:|CONFIDENCE:", stripped, re.I):
-                if "HIGH" in stripped.upper():
-                    confidence = "HIGH"
-                elif "LOW" in stripped.upper():
-                    confidence = "LOW"
-                else:
-                    confidence = "MEDIUM"
-
-            # AGREEMENT ANALYSIS: collect text in agreement section
-            if (
-                current_section == "agreement"
-                and stripped
-                and not stripped.startswith("#")
-            ):
-                if not agreement_analysis:
-                    agreement_analysis = stripped
-                else:
-                    agreement_analysis += "\n" + stripped
-
-        if not individual_summaries:
-            for r in round_responses:
-                individual_summaries[r.model] = ["(No specific points extracted)"]
-
-        if not agreement_analysis:
-            agreement_analysis = "(Analysis not provided)"
-
-        # FIX 3: Validation check - detect contradictions between agreement_analysis and consensus_assessment
-        # If agreement_analysis explicitly says "NOT REACHED" but consensus_assessment is "REACHED",
-        # there's a contradiction and we should default to the more conservative assessment
-        if consensus_assessment == "REACHED" and agreement_analysis:
-            # Check if agreement_analysis explicitly states consensus was NOT reached
-            agreement_upper = agreement_analysis.upper()
-            # Look for explicit "Consensus: NOT REACHED" or similar patterns in the analysis
-            if (
-                re.search(r"consensus\s*:\s*not\s*reached", agreement_upper)
-                or re.search(r"consensus\s+not\s+reached", agreement_upper)
-                or re.search(r"no\s+consensus", agreement_upper)
-            ):
-                print("[Warning] Consensus assessment contradiction detected:")
-                print(f"  - consensus_assessment: {consensus_assessment}")
-                print("  - agreement_analysis contains: 'NOT REACHED'")
-                print("  - Defaulting to NOT REACHED")
-                consensus_assessment = "NOT REACHED"
-
-        return {
-            "individual_summaries": individual_summaries,
-            "agreement_analysis": agreement_analysis,
-            "consensus_assessment": consensus_assessment,
-            "confidence": confidence,
-        }
-
-    def _parse_attributed_summary(self, text: str, round_responses: list) -> dict:
-        """
-        Parse the moderator's attributed summary from Markdown text.
-
-        Uses a two-tier approach:
-        1. First tries to parse JSON blocks (preferred - most reliable)
-        2. Falls back to regex-based Markdown parsing with tolerant patterns
-        """
-        parsed = DiscussionOrchestrator._parse_json_block(text)
-        if parsed is not None:
-            return parsed
-        return DiscussionOrchestrator._parse_markdown_summary(text, round_responses)
+    def _parse_attributed_summary(
+        self, text: str, round_responses: "list[Response]"
+    ) -> dict:
+        """Deprecated: use SummaryParser.parse instead."""
+        return SummaryParser.parse(text, round_responses)
 
     def _check_main_point_consensus(self, attributed) -> str:
         if not attributed:
