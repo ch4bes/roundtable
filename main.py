@@ -7,11 +7,13 @@ A CLI/TUI application for running multi-model discussions with local LLMs via Ol
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
 from core import Config
-from storage import SessionManager, Exporter
+from core.log import setup_logging
+from storage import Exporter, SessionManager
 
 
 def parse_args() -> argparse.Namespace:
@@ -160,7 +162,9 @@ async def list_sessions(config: Config):
             status_icon = "⏸"
         print(f"{status_icon} {session['id'][:36]}")
         print(f"  Prompt: {session['prompt'][:80]}...")
-        print(f"  Status: {session['status']} | Rounds: {session.get('completed_rounds', 0)}")
+        print(
+            f"  Status: {session['status']} | Rounds: {session.get('completed_rounds', 0)}"
+        )
         print(f"  Created: {session['created_at'][:19]}")
         print()
 
@@ -179,17 +183,21 @@ async def export_session(
         format = config.storage.export_format
 
     if output_path is None:
-        output_path = Path(config.storage.sessions_dir) / f"discussion_{session.id[:8]}.{format}"
+        output_path = (
+            Path(config.storage.sessions_dir) / f"discussion_{session.id[:8]}.{format}"
+        )
 
     output_path = Path(output_path)
     await Exporter.export(session, output_path, format)
     print(f"Exported session to: {output_path}")
 
 
-async def run_cli_discussion(config: Config, prompt: str, images: list[str] | None = None):
+async def run_cli_discussion(
+    config: Config, prompt: str, images: list[str] | None = None
+):
     from core import DiscussionOrchestrator
-    from storage import Session
     from core.ollama_client import OllamaClient
+    from storage import Session
 
     # Validate models exist in Ollama (permissive - warn but don't fail)
     client = OllamaClient(
@@ -202,14 +210,17 @@ async def run_cli_discussion(config: Config, prompt: str, images: list[str] | No
         for name in missing:
             print(
                 f"Warning: Model '{name}' not found in Ollama. "
-                f"Discussion may fail for this model.",
+                f"Run 'ollama pull {name}' to install it.",
                 file=sys.stderr,
             )
-    except Exception as e:
+    except ConnectionError:
         print(
-            f"Warning: Could not validate models: {e}",
+            "Warning: Could not connect to Ollama to validate models. "
+            "Is Ollama running? Try: ollama serve",
             file=sys.stderr,
         )
+    except Exception as e:
+        print(f"Warning: Could not validate models: {e}", file=sys.stderr)
     finally:
         await client.close()
 
@@ -260,15 +271,22 @@ async def run_cli_discussion(config: Config, prompt: str, images: list[str] | No
                 print(f"\n--- Round {round_num} ---")
                 table = Exporter._format_matrix_table(model_names, matrix)
                 print(table)
-                
+
                 threshold = config.discussion.consensus_threshold
                 n = len(model_names)
                 agreeing_pairs = sum(
-                    1 for i in range(n) for j in range(i + 1, n) if matrix[i][j] >= threshold
+                    1
+                    for i in range(n)
+                    for j in range(i + 1, n)
+                    if matrix[i][j] >= threshold
                 )
                 total_pairs = n * (n - 1) // 2 if n > 1 else 0
-                agreement_pct = (agreeing_pairs / total_pairs * 100) if total_pairs > 0 else 0
-                print(f"\nAgreement: {agreeing_pairs}/{total_pairs} pairs above {threshold} threshold ({agreement_pct:.1f}%)")
+                agreement_pct = (
+                    (agreeing_pairs / total_pairs * 100) if total_pairs > 0 else 0
+                )
+                print(
+                    f"\nAgreement: {agreeing_pairs}/{total_pairs} pairs above {threshold} threshold ({agreement_pct:.1f}%)"
+                )
             print()
         print()
         print()
@@ -285,6 +303,7 @@ async def run_cli_discussion(config: Config, prompt: str, images: list[str] | No
 
 
 def main() -> None:
+    setup_logging(level=logging.INFO)
     args = parse_args()
 
     # Determine config file path
@@ -296,15 +315,25 @@ def main() -> None:
         print("Running auto-configuration...")
         print()
         import subprocess
-        result = subprocess.run(["python", "scripts/auto_config.py"], cwd=Path(__file__).parent)
+
+        result = subprocess.run(
+            ["python", "scripts/auto_config.py"], cwd=Path(__file__).parent
+        )
         if result.returncode != 0:
-            print("Auto-configuration failed. Please run manually: python scripts/auto_config.py")
+            print(
+                "Auto-configuration failed. Please run manually: python scripts/auto_config.py"
+            )
             sys.exit(1)
         print()
 
     try:
         config = Config.load(args.config)
+    except FileNotFoundError as e:
+        print(f"Config file not found: {e}", file=sys.stderr)
+        print("Run 'python scripts/auto_config.py' to generate one.", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
+        # Pydantic ValidationError messages are already descriptive
         print(f"Error loading config: {e}", file=sys.stderr)
         sys.exit(1)
 

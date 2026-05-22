@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import random
 import re
 import shutil
@@ -16,11 +17,13 @@ from storage.session import Response, Session, SessionManager
 from .config import Config
 from .consensus import ConsensusDetector, ConsensusResult
 from .input_reader import InputBuffer
-from .llm_client import LLMClient
+from .llm_client import GenerationResponse, LLMClient
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .summary_parser import SummaryParser
 from .tools import create_tool_executor, get_available_tools
+
+logger = logging.getLogger(__name__)
 
 
 class _ConsensusVerdict:
@@ -314,13 +317,16 @@ class DiscussionOrchestrator:
 
             full_text = response.message
 
-            # Log if tools were used
             if response.tool_calls:
-                print(
-                    f"[Round {round_num}] Moderator used {len(response.tool_calls)} tool call(s)"
+                logger.info(
+                    "[Round %d] Moderator used %d tool call(s)",
+                    round_num,
+                    len(response.tool_calls),
                 )
                 for tc in response.tool_calls:
-                    print(f"  - {tc.name}: {tc.arguments.get('query', 'N/A')}")
+                    logger.debug(
+                        "  tool: %s query=%s", tc.name, tc.arguments.get("query", "N/A")
+                    )
         else:
             # Use generate method (no tools)
             response = await self.ollama.generate(
@@ -351,10 +357,10 @@ class DiscussionOrchestrator:
             if re.search(
                 r"consensus\s*:\s*not\s*reached", full_text_upper
             ) or re.search(r"consensus\s+not\s+reached", full_text_upper):
-                print(
-                    "[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED"
+                logger.warning(
+                    "Parser set consensus_assessment to REACHED but full_text "
+                    "contains NOT REACHED — overriding to NOT REACHED"
                 )
-                print("  - Updating consensus_assessment to NOT REACHED")
                 # Update the session with the corrected value
                 attributed = self.session.get_attributed_summary(round_num)
                 if attributed:
@@ -364,7 +370,7 @@ class DiscussionOrchestrator:
 
     async def _generate_final_review(self) -> str:
         """Generate comprehensive final review after consensus is reached."""
-        print("Generating final review...")
+        logger.info("Generating final review...")
 
         all_responses = self.session.responses
         all_summaries = self.session.attributed_summaries
@@ -531,12 +537,12 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
         response_text = response.response.upper()
 
         if "CHANGE" in response_text and "REACHED" in response_text:
-            print(
-                f"[Round {round_num}] Reprompt: Moderator changed to REACHED based on similarity evidence"
-            )
+            logger.info("[Round %d] Reprompt: moderator changed to REACHED", round_num)
             return "REACHED"
         else:
-            print(f"[Round {round_num}] Reprompt: Moderator kept original assessment")
+            logger.debug(
+                "[Round %d] Reprompt: moderator kept original assessment", round_num
+            )
             return attributed.consensus_assessment
 
     async def _check_consensus(
@@ -568,12 +574,16 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 )
             )
 
+            # Run the detector so the returned result is semantically correct
+            # (not a stub). Callers that need only the matrix read
+            # result.details["similarity_matrix"].
+            consensus = self.consensus_detector.detect(similarity_result.matrix)
             return ConsensusResult(
-                reached=False,
-                percentage=0,
-                agreeing_pairs=0,
-                total_pairs=0,
-                method=self.consensus_detector.method,
+                reached=consensus.reached,
+                percentage=consensus.percentage,
+                agreeing_pairs=consensus.agreeing_pairs,
+                total_pairs=consensus.total_pairs,
+                method=consensus.method,
                 details={
                     "similarity_matrix": similarity_result.matrix.tolist(),
                     "model_names": model_names,
@@ -690,8 +700,8 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         break
 
                     if self.state.skip_requested:
-                        print(
-                            f"[Round {round_num}] Skip requested. Jumping to summary."
+                        logger.info(
+                            "[Round %d] Skip requested — jumping to summary", round_num
                         )
                         self.state.skip_requested = False
                         break
@@ -709,37 +719,72 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         self.config.models[0],
                     )
 
-                    print(f"[Round {round_num}] {model_name} responding...")
+                    logger.info("[Round %d] %s responding...", round_num, model_name)
 
-                    # Retry logic for empty responses
-                    max_retries = 2
-                    retry_count = 0
-                    generated = None
+                    # Retry with exponential backoff for API errors;
+                    # plain empty responses are retried without delay.
+                    _MAX_RETRIES = 3
+                    generated: GenerationResponse | None = None
 
-                    while retry_count <= max_retries:
-                        generated = await self.ollama.generate(
-                            model=model_name,
-                            prompt=context,
-                            system=ParticipantPrompt.system(),
-                            temperature=model_config_obj.temperature,
-                            max_tokens=model_config_obj.max_tokens,
-                            num_ctx=model_config_obj.num_ctx,
-                            images=self.session.images,
+                    for attempt in range(_MAX_RETRIES + 1):
+                        try:
+                            generated = await self.ollama.generate(
+                                model=model_name,
+                                prompt=context,
+                                system=ParticipantPrompt.system(),
+                                temperature=model_config_obj.temperature,
+                                max_tokens=model_config_obj.max_tokens,
+                                num_ctx=model_config_obj.num_ctx,
+                                images=self.session.images,
+                            )
+                            if generated.response and generated.response.strip():
+                                break  # valid response received
+                            if attempt < _MAX_RETRIES:
+                                logger.warning(
+                                    "[Round %d] %s empty response, retrying (%d/%d)",
+                                    round_num,
+                                    model_name,
+                                    attempt + 1,
+                                    _MAX_RETRIES,
+                                )
+                            else:
+                                logger.warning(
+                                    "[Round %d] %s still empty after %d retries",
+                                    round_num,
+                                    model_name,
+                                    _MAX_RETRIES,
+                                )
+                        except Exception as exc:
+                            if attempt < _MAX_RETRIES:
+                                wait = 2**attempt  # 1 s, 2 s, 4 s
+                                logger.warning(
+                                    "[Round %d] %s API error (attempt %d/%d): %s "
+                                    "— retrying in %ds",
+                                    round_num,
+                                    model_name,
+                                    attempt + 1,
+                                    _MAX_RETRIES,
+                                    exc,
+                                    wait,
+                                )
+                                await asyncio.sleep(wait)
+                            else:
+                                logger.error(
+                                    "[Round %d] %s failed after %d retries: %s "
+                                    "— proceeding with empty response",
+                                    round_num,
+                                    model_name,
+                                    _MAX_RETRIES,
+                                    exc,
+                                )
+                                generated = GenerationResponse(
+                                    response="", model=model_name, done=True
+                                )
+
+                    if generated is None:
+                        generated = GenerationResponse(
+                            response="", model=model_name, done=True
                         )
-
-                        # Check if response is empty
-                        if generated.response and generated.response.strip():
-                            break  # Got valid response
-
-                        retry_count += 1
-                        if retry_count <= max_retries:
-                            print(
-                                f"[Round {round_num}] {model_name} returned empty response, retrying ({retry_count}/{max_retries})..."
-                            )
-                        else:
-                            print(
-                                f"[Round {round_num}] {model_name} still returned empty after {max_retries} retries, proceeding with empty content"
-                            )
 
                     response_text = generated
 
@@ -752,15 +797,20 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             generated.total_duration / 1_000_000_000, 2
                         )
 
-                    print(
-                        f"[Round {round_num}] {model_name} completed ({len(response_text.response)} chars, {response_time_s}s)"
+                    clean_response = self._sanitize_response(response_text.response)
+                    logger.info(
+                        "[Round %d] %s completed (%d chars, %ss)",
+                        round_num,
+                        model_name,
+                        len(clean_response),
+                        response_time_s,
                     )
 
                     model_response_time_s = response_time_s
 
                     response = Response(
                         model=model_name,
-                        content=response_text.response,
+                        content=clean_response,
                         round=round_num,
                         timestamp=datetime.now().isoformat(),
                         position=i,
@@ -812,7 +862,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         if self.config.storage.auto_save:
                             await self.session_manager.save(self.session)
 
-                print(f"[Round {round_num}] Moderator generating summary...")
+                logger.info("[Round %d] Moderator generating summary...", round_num)
 
                 # Only generate summary if it doesn't exist for this round
                 if self.session.get_summary(round_num) is None:
@@ -835,42 +885,53 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                     )
                     self.session.add_summary(round_num, summary)
 
-                    print(
-                        f"[Round {round_num}] Summary completed ({len(summary)} chars)"
+                    logger.info(
+                        "[Round %d] Summary completed (%d chars)",
+                        round_num,
+                        len(summary),
                     )
 
                     attributed = self.session.get_attributed_summary(round_num)
                     if attributed:
-                        print(
-                            f"[Round {round_num}] Moderator assessment: {attributed.consensus_assessment} (Confidence: {attributed.confidence})"
+                        logger.info(
+                            "[Round %d] Moderator: %s (confidence: %s)",
+                            round_num,
+                            attributed.consensus_assessment,
+                            attributed.confidence,
                         )
-                        print(f"[Round {round_num}] Individual summaries:")
                         for model, points in attributed.individual_summaries.items():
-                            print(
-                                f"  {model}: {points[0] if points else '(no points)'}"
+                            logger.debug(
+                                "  %s: %s",
+                                model,
+                                points[0] if points else "(no points)",
                             )
 
                     if self.config.storage.auto_save:
                         await self.session_manager.save(self.session)
                 else:
-                    print(
-                        f"[Round {round_num}] Summary already exists, skipping generation"
+                    logger.debug(
+                        "[Round %d] Summary already exists, skipping generation",
+                        round_num,
                     )
                     attributed = self.session.get_attributed_summary(round_num)
                     sim = self.session.get_similarity_matrix(round_num)
 
                     # Validate required data exists for consensus check
                     if not attributed:
-                        print(
-                            f"[Round {round_num}] Warning: Summary exists but attributed summary missing, regenerating..."
+                        logger.warning(
+                            "[Round %d] Summary exists but attributed summary missing"
+                            " — regenerating",
+                            round_num,
                         )
                         # Fall through to generate new summary
                         attributed = None
                         sim_matrix = None
                         sim_names = []
                     elif sim is None:
-                        print(
-                            f"[Round {round_num}] Warning: Summary exists but similarity matrix missing, regenerating..."
+                        logger.warning(
+                            "[Round %d] Summary exists but similarity matrix missing"
+                            " — regenerating",
+                            round_num,
                         )
                         # Fall through to generate new similarity matrix
                         sim_matrix = None
@@ -933,8 +994,10 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             )
 
                             if has_contradiction:
-                                print(
-                                    f"[Round {round_num}] Contradiction detected in moderator reasoning. Reprompting for clarity..."
+                                logger.info(
+                                    "[Round %d] Contradiction in moderator reasoning"
+                                    " — reprompting",
+                                    round_num,
                                 )
                                 revised = await self._reprompt_for_consensus(
                                     round_num, attributed, sim_matrix, sim_names
@@ -945,16 +1008,19 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                                     revised
                                     and revised != attributed.consensus_assessment
                                 ):
-                                    print(
-                                        f"  - Similarity agreement: {agreement_pct:.1f}%"
+                                    logger.info(
+                                        "[Round %d] Moderator revised to %s "
+                                        "(agreement %.1f%%)",
+                                        round_num,
+                                        revised,
+                                        agreement_pct,
                                     )
-                                    print(f"  - Moderator revised to: {revised}")
                                     attributed.consensus_assessment = revised
                                     consensus_reached = revised == "REACHED"
                             else:
-                                # No contradiction - keep moderator's original decision
-                                print(
-                                    f"[Round {round_num}] Moderator assessment stands (no contradiction detected)"
+                                logger.debug(
+                                    "[Round %d] Moderator assessment stands",
+                                    round_num,
                                 )
 
                         # Build ConsensusResult for TUI state (fix #1.1)
@@ -1004,8 +1070,10 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                     self.state.consensus_result = consensus_result
                     consensus_reached = consensus_result.reached
 
-                print(
-                    f"[Round {round_num}] Consensus: {'REACHED' if consensus_reached else 'NOT REACHED'}"
+                logger.info(
+                    "[Round %d] Consensus: %s",
+                    round_num,
+                    "REACHED" if consensus_reached else "NOT REACHED",
                 )
 
                 if consensus_reached:
@@ -1014,8 +1082,11 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             final_review = await self._generate_final_review()
                             self.session.add_final_review(final_review)
                         except Exception as e:
-                            print(f"Warning: Final review generation failed: {e}")
-                            print("Continuing without final review.")
+                            logger.warning(
+                                "Final review generation failed: %s"
+                                " — continuing without it",
+                                e,
+                            )
 
                     self.session.mark_completed(consensus_round=round_num)
                     await self.session_manager.save(self.session)
@@ -1026,14 +1097,11 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 await self.session_manager.save(self.session)
 
         except Exception as e:
-            print(
-                f"\n[ERROR] Discussion failed during round "
-                f"{self.state.current_round}: {e}",
-                file=sys.stderr,
+            logger.exception(
+                "Discussion failed during round %d: %s",
+                self.state.current_round,
+                e,
             )
-            import traceback
-
-            traceback.print_exc()
             self.session.mark_stopped()
             await self.session_manager.save(self.session)
             raise
@@ -1059,3 +1127,17 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
     async def cleanup(self) -> None:
         await self.ollama.close()
+
+    @staticmethod
+    def _sanitize_response(text: str) -> str:
+        """Strip null bytes and C0/C1 control characters from model output.
+
+        Preserves printable characters, newlines (\\n), carriage returns (\\r),
+        and tabs (\\t). Guards against non-UTF-8 byte sequences that can crash
+        JSON serialisation or the TUI renderer.
+        """
+        # Re-encode/decode to drop invalid UTF-8 byte sequences
+        text = text.encode("utf-8", errors="ignore").decode("utf-8")
+        # Strip control characters except \n (0x0a), \r (0x0d), \t (0x09)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+        return text

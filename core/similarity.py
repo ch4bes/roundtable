@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import re
 from dataclasses import dataclass
 
@@ -8,6 +9,12 @@ import numpy as np
 
 from .exceptions import DimensionMismatchError
 from .llm_client import EmbeddingResponse, LLMClient
+
+logger = logging.getLogger(__name__)
+
+# Number of similarity calculations to wait in text-fallback mode before
+# re-testing whether the embedding service has recovered.
+_EMBEDDING_RETRY_AFTER: int = 5
 
 
 @dataclass
@@ -34,6 +41,9 @@ class SimilarityEngine:
         self._cache: dict[str, list[float]] = {}
         self._max_cache_size = 100
         self._cache_order: list[str] = []  # FIFO ordering for eviction
+        # Tracks calls made while use_embeddings is False so we can retry
+        # periodically instead of staying in fallback mode permanently.
+        self._fallback_call_count: int = 0
 
     async def get_embedding(self, text: str) -> list[float]:
         """Generate an embedding vector for the given text.
@@ -56,8 +66,8 @@ class SimilarityEngine:
         # Handle empty text - return a zero vector to avoid shape mismatches
         if not text or not text.strip():
             dim = self._dimension if self._dimension else self._default_dimension
-            print(
-                f"Warning: Empty text provided for embedding, using zero vector (dim={dim})"
+            logger.warning(
+                "Empty text provided for embedding, using zero vector (dim=%d)", dim
             )
             return [0.0] * dim
 
@@ -84,7 +94,7 @@ class SimilarityEngine:
         # Handle empty embedding response
         if not embedding or len(embedding) == 0:
             dim = self._dimension if self._dimension else self._default_dimension
-            print(f"Warning: Empty embedding returned, using zero vector (dim={dim})")
+            logger.warning("Empty embedding returned, using zero vector (dim=%d)", dim)
             embedding = [0.0] * dim
 
         self._cache[cache_key] = embedding
@@ -149,13 +159,27 @@ class SimilarityEngine:
                 empty_models.append(name)
 
         if empty_models:
-            print(
-                f"Warning: {len(empty_models)} model(s) returned empty content: {', '.join(empty_models)}. Using zero similarity for these."
+            logger.warning(
+                "%d model(s) returned empty content: %s — using zero similarity",
+                len(empty_models),
+                ", ".join(empty_models),
             )
 
         # If all texts are empty, return a matrix with zeros
         if not valid_texts:
             return SimilarityResult(matrix=np.zeros((n, n)), model_names=model_names)
+
+        # Periodically re-test the embedding service when in fallback mode
+        # so a transient outage does not disable embeddings for the entire session.
+        if not self.use_embeddings:
+            self._fallback_call_count += 1
+            if self._fallback_call_count >= _EMBEDDING_RETRY_AFTER:
+                logger.info(
+                    "Re-testing embedding service after %d fallback calls ...",
+                    self._fallback_call_count,
+                )
+                self.use_embeddings = True
+                self._fallback_call_count = 0
 
         if self.use_embeddings:
             try:
@@ -181,10 +205,12 @@ class SimilarityEngine:
                     texts, model_names, full_embeddings
                 )
             except (httpx.HTTPError, RuntimeError) as e:
-                print(
-                    f"Warning: Embedding generation failed ({e}), falling back to text-based similarity"
+                logger.warning(
+                    "Embedding generation failed (%s); falling back to text-based similarity",
+                    e,
                 )
                 self.use_embeddings = False
+                self._fallback_call_count = 0
 
         return await self._build_similarity_matrix(texts, model_names, None)
 
@@ -263,8 +289,9 @@ class SimilarityEngine:
 
                 return pairs
             except (httpx.HTTPError, RuntimeError) as e:
-                print(
-                    f"Warning: Pairwise embedding failed ({e}), falling back to text-based similarity"
+                logger.warning(
+                    "Pairwise embedding failed (%s); falling back to text-based similarity",
+                    e,
                 )
                 self.use_embeddings = False
 

@@ -1,8 +1,9 @@
 import httpx
 import pytest
-from core.similarity import SimilarityEngine
-from core.ollama_client import EmbeddingResponse
+
 from core.exceptions import DimensionMismatchError
+from core.ollama_client import EmbeddingResponse
+from core.similarity import SimilarityEngine
 
 
 class MockOllamaClient:
@@ -152,6 +153,7 @@ def test_text_similarity_fallback():
 
 # ── Fallback-on-embedding-failure tests (§1.9) ──────────────────────────
 
+
 class MockOllamaClientFailing:
     """Mock client that raises on every embeddings() call."""
 
@@ -165,42 +167,44 @@ class MockOllamaClientFailing:
 
 
 @pytest.mark.asyncio
-async def test_similarity_fallback_logs_error_message(capsys):
-    """When embedding fails, the error message is logged, not silently swallowed."""
+async def test_similarity_fallback_logs_error_message(caplog):
+    """When embedding fails, the warning is logged, not silently swallowed."""
+    import logging
+
     engine = SimilarityEngine.__new__(SimilarityEngine)
     engine.ollama = MockOllamaClientFailing(httpx.HTTPError("Connection refused"))
     engine.embedding_model = "test-model"
     engine.use_embeddings = True
     engine._cache = {}
 
-    result = await engine.calculate_similarity_matrix(
-        ["text1", "text2", "text3"], ["m1", "m2", "m3"]
-    )
+    with caplog.at_level(logging.WARNING, logger="core.similarity"):
+        result = await engine.calculate_similarity_matrix(
+            ["text1", "text2", "text3"], ["m1", "m2", "m3"]
+        )
 
     assert not engine.use_embeddings  # fallback triggered
-    assert isinstance(result, type(result))
     assert result.matrix.shape == (3, 3)
-
-    captured = capsys.readouterr()
-    assert "Connection refused" in captured.out
-    assert "falling back to text-based" in captured.out.lower()
+    assert any("Connection refused" in r.message for r in caplog.records)
+    assert any("falling back" in r.message.lower() for r in caplog.records)
 
 
 @pytest.mark.asyncio
-async def test_pairwise_similarity_fallback_logs_error(capsys):
-    """When pairwise embedding fails, the error is logged."""
+async def test_pairwise_similarity_fallback_logs_error(caplog):
+    """When pairwise embedding fails, the warning is logged."""
+    import logging
+
     engine = SimilarityEngine.__new__(SimilarityEngine)
     engine.ollama = MockOllamaClientFailing(httpx.HTTPError("Timeout"))
     engine.embedding_model = "test-model"
     engine.use_embeddings = True
     engine._cache = {}
 
-    await engine.calculate_pairwise_similarities(["text1", "text2"])
+    with caplog.at_level(logging.WARNING, logger="core.similarity"):
+        await engine.calculate_pairwise_similarities(["text1", "text2"])
 
     assert not engine.use_embeddings
-    captured = capsys.readouterr()
-    assert "Timeout" in captured.out
-    assert "falling back to text-based" in captured.out.lower()
+    assert any("Timeout" in r.message for r in caplog.records)
+    assert any("falling back" in r.message.lower() for r in caplog.records)
 
 
 @pytest.mark.asyncio
@@ -243,7 +247,7 @@ async def test_similarity_matrix_fallback_on_mismatched_embeddings():
     """The similarity matrix should fall back to text similarity on dimension mismatch."""
     embeddings = {
         "text a": [1.0, 0.0],
-        "text b": [1.0, 0.0, 0.0], # Mismatch!
+        "text b": [1.0, 0.0, 0.0],  # Mismatch!
     }
     mock_client = MockOllamaClient(embeddings)
     engine = SimilarityEngine.__new__(SimilarityEngine)
@@ -254,33 +258,33 @@ async def test_similarity_matrix_fallback_on_mismatched_embeddings():
 
     # Using a a and b that are exactly identical text for easy Jaccard check
     texts = ["same text", "same text"]
-    embeddings_mismatched = {
-        "same text": [1.0, 0.0] 
-    }
+    embeddings_mismatched = {"same text": [1.0, 0.0]}
     # We need different embeddings for different texts to test mismatch.
     # But the MockOllamaClient's embeddings() uses prompt as key.
     # So we need different prompts that return different lengths.
-    
+
     texts = ["text a", "text b"]
     model_names = ["m1", "m2"]
-    
+
     # we already defined 'embeddings' dictionary at top of test
     result = await engine.calculate_similarity_matrix(texts, model_names)
-    
+
     # text a and text b are different, so Jaccard will be < 1.0
     # But they should have SOME similarity if we use words that overlap.
     # Let's redefine for a clear Jaccard result.
-    
+
     embeddings_mismatched = {
         "hello world": [1.0, 0.0],
-        "hello universe": [1.0, 0.0, 0.0]
+        "hello universe": [1.0, 0.0, 0.0],
     }
     mock_client.embeddings_map = embeddings_mismatched
-    
-    result = await engine.calculate_similarity_matrix(["hello world", "hello universe"], model_names)
-    
+
+    result = await engine.calculate_similarity_matrix(
+        ["hello world", "hello universe"], model_names
+    )
+
     # Jaccard of {"hello", "world"} and {"hello", "universe"} = 1 / 3 = 0.333
-    assert result.matrix[0, 1] == pytest.approx(1/3)
+    assert result.matrix[0, 1] == pytest.approx(1 / 3)
 
 
 @pytest.mark.asyncio
@@ -288,7 +292,7 @@ async def test_pairwise_fallback_on_mismatched_embeddings():
     """Pairwise similarity should fall back to text similarity on dimension mismatch."""
     embeddings_mismatched = {
         "hello world": [1.0, 0.0],
-        "hello universe": [1.0, 0.0, 0.0]
+        "hello universe": [1.0, 0.0, 0.0],
     }
     mock_client = MockOllamaClient(embeddings_mismatched)
     engine = SimilarityEngine.__new__(SimilarityEngine)
@@ -296,9 +300,11 @@ async def test_pairwise_fallback_on_mismatched_embeddings():
     engine.embedding_model = "test-model"
     engine.use_embeddings = True
     engine._cache = {}
-    
-    pairs = await engine.calculate_pairwise_similarities(["hello world", "hello universe"])
-    
+
+    pairs = await engine.calculate_pairwise_similarities(
+        ["hello world", "hello universe"]
+    )
+
     # One pair, similarity should be Jaccard 1/3
     assert len(pairs) == 1
-    assert pairs[0][2] == pytest.approx(1/3)
+    assert pairs[0][2] == pytest.approx(1 / 3)

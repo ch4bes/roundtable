@@ -10,8 +10,11 @@ Parsing strategy (two-tier):
 """
 
 import json
+import logging
 import re
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from storage.session import Response
@@ -182,10 +185,12 @@ class SummaryParser:
                 or re.search(r"consensus\s+not\s+reached", agreement_upper)
                 or re.search(r"no\s+consensus", agreement_upper)
             ):
-                print("[Warning] Consensus assessment contradiction detected:")
-                print(f"  - consensus_assessment: {consensus_assessment}")
-                print("  - agreement_analysis contains: 'NOT REACHED'")
-                print("  - Defaulting to NOT REACHED")
+                logger.warning(
+                    "Consensus assessment contradiction: "
+                    "assessment=%s but agreement_analysis contains 'NOT REACHED'. "
+                    "Defaulting to NOT REACHED.",
+                    consensus_assessment,
+                )
                 consensus_assessment = "NOT REACHED"
 
         return {

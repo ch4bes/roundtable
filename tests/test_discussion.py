@@ -266,8 +266,10 @@ class TestMainPointConsensus:
 
 class TestRunExceptionLogging:
     @pytest.mark.asyncio
-    async def test_run_logs_exception_context(self, capsys):
-        """When run() raises, the error message includes the current round number."""
+    async def test_run_logs_exception_context(self, caplog):
+        """When run() raises, the error is logged with the round number."""
+        import logging
+
         config = Config(
             models=[
                 ModelConfig(name="model1"),
@@ -284,20 +286,31 @@ class TestRunExceptionLogging:
             progress_callback=AsyncMock(),
         )
 
-        # Have generate raise on the first call (round 1, model1)
-        # This triggers the outer except handler immediately
-        async def failing_generate(*args, **kwargs):
-            raise RuntimeError("simulated failure")
+        # Have generate succeed enough times to pass the retry budget,
+        # then fail at the summary stage so the outer except is triggered.
+        call_count = 0
+        max_ok = (3 + 1) * 2  # _MAX_RETRIES+1 attempts × 2 models
 
-        orchestrator.ollama.generate = failing_generate
+        async def eventually_fail(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count > max_ok:
+                raise RuntimeError("simulated failure")
+            from core.llm_client import GenerationResponse
+
+            return GenerationResponse(response="ok", model="model1", done=True)
+
+        orchestrator.ollama.generate = eventually_fail
         orchestrator.session_manager.save = AsyncMock()
 
-        with pytest.raises(RuntimeError, match="simulated failure"):
-            await orchestrator.run()
+        with caplog.at_level(logging.ERROR, logger="core.discussion"):
+            with pytest.raises(RuntimeError, match="simulated failure"):
+                await orchestrator.run()
 
-        captured = capsys.readouterr()
-        assert "round" in captured.err.lower()
-        assert "simulated failure" in captured.err
+        assert any(
+            "round" in record.message.lower() and record.levelno >= logging.ERROR
+            for record in caplog.records
+        )
 
 
 class TestConsensusResultInModeratorMode:
