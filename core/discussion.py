@@ -1,21 +1,24 @@
 import asyncio
 import json
+import random
 import re
+import shutil
 import sys
-from datetime import datetime
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
+
 import numpy as np
-import random
-import shutil
+
+from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
+from storage.session import Response, Session, SessionManager
+
 from .config import Config
-from .ollama_client import OllamaClient
-from .similarity import SimilarityEngine
 from .consensus import ConsensusDetector, ConsensusResult
 from .input_reader import InputBuffer
+from .ollama_client import OllamaClient
+from .similarity import SimilarityEngine
 from .tools import create_tool_executor, get_available_tools
-from prompts.system_prompts import ModeratorPrompt, ParticipantPrompt
-from storage.session import Session, SessionManager, Response
 
 
 class _ConsensusVerdict:
@@ -105,7 +108,8 @@ class DiscussionOrchestrator:
             all_responses = model_responses + human_responses
             if all_responses:
                 context_text = "\n\n".join(
-                    f"### {r.model} (Round {r.round}):\n{r.content}" for r in all_responses
+                    f"### {r.model} (Round {r.round}):\n{r.content}"
+                    for r in all_responses
                 )
                 return f"{self.session.prompt}\n\n=== DISCUSSION HISTORY ===\n{context_text}"
             return ParticipantPrompt.initial(self.session.prompt)
@@ -128,8 +132,12 @@ class DiscussionOrchestrator:
             if n_rounds > 0 and self.session.responses:
                 current_round = self.session.responses[-1].round
                 start_round = max(1, current_round - n_rounds + 1)
-                recent_model_responses = [r for r in self.session.responses if r.round >= start_round]
-                recent_human_responses = get_human_responses_for_rounds(start_round, current_round)
+                recent_model_responses = [
+                    r for r in self.session.responses if r.round >= start_round
+                ]
+                recent_human_responses = get_human_responses_for_rounds(
+                    start_round, current_round
+                )
                 recent_responses = recent_model_responses + recent_human_responses
             else:
                 recent_responses = []
@@ -147,7 +155,9 @@ class DiscussionOrchestrator:
                     f"CONSENSUS: {latest_attributed.consensus_assessment}"
                 )
             if recent_responses:
-                context_text = "\n\n".join(f"### {r.model}:\n{r.content}" for r in recent_responses)
+                context_text = "\n\n".join(
+                    f"### {r.model}:\n{r.content}" for r in recent_responses
+                )
                 context_parts.append(f"=== RECENT RESPONSES ===\n{context_text}")
 
             if context_parts and round_num > 1:
@@ -168,20 +178,28 @@ class DiscussionOrchestrator:
             return await self.human_input_callback(context, round_num, position)
 
         if self.config.human_participant.enabled:
-            prompt_text = self.config.human_participant.prompt.replace("{prompt}", self.session.prompt)
-            
+            prompt_text = self.config.human_participant.prompt.replace(
+                "{prompt}", self.session.prompt
+            )
+
             # The 'context' passed in is already the result of _build_context
             context_display = context
             if not context_display:
                 context_display = "No context available."
             # Dynamic truncation based on terminal size, with sensible minimum/maximum
-            term_width = shutil.get_terminal_size().columns if shutil.get_terminal_size().columns > 0 else 80
-            max_chars = max(500, min(term_width * 30, 5000))  # 30 chars per line, between 500-5000
+            term_width = (
+                shutil.get_terminal_size().columns
+                if shutil.get_terminal_size().columns > 0
+                else 80
+            )
+            max_chars = max(
+                500, min(term_width * 30, 5000)
+            )  # 30 chars per line, between 500-5000
             if len(context_display) > max_chars:
                 context_display = context_display[:max_chars] + "... [Truncated]"
 
             paragraphs = []
-            
+
             print("\n" + "=" * 60)
             print(f"ROUND {round_num}: Your turn to respond")
             print("=" * 60)
@@ -189,40 +207,44 @@ class DiscussionOrchestrator:
             print(f"\n{context_display}")
             print("-" * 60)
             print("\nType your response. Press Enter after each paragraph.")
-            print("Type text and Enter to add another paragraph, or press Enter on empty line to submit.")
+            print(
+                "Type text and Enter to add another paragraph, or press Enter on empty line to submit."
+            )
             print("Type 's' at any time to skip. (Ctrl+C stops the program.)")
-            
+
             while True:
                 user_input = await asyncio.to_thread(sys.stdin.readline)
-                
+
                 if not user_input:
                     break
-                
+
                 # Skip (before empty check so 's' works even on first line)
-                if user_input.strip().lower() == 's':
+                if user_input.strip().lower() == "s":
                     print(f"\n[Round {round_num}] Human skipped")
                     return ""
-                
+
                 # Empty line = submit (only if we have at least one paragraph)
                 if not user_input.strip() and paragraphs:
                     break
-                
+
                 # Any non-empty line = next paragraph
                 if user_input.strip():
-                    paragraphs.append(user_input.rstrip('\n'))
+                    paragraphs.append(user_input.rstrip("\n"))
                     print("\n" + "-" * 40)
                     print(f"Paragraph {len(paragraphs)} confirmed.")
-                    print("Type text and Enter for another paragraph, or press Enter to submit.\n")
-                
+                    print(
+                        "Type text and Enter for another paragraph, or press Enter to submit.\n"
+                    )
+
                 # Keep reading
-            
+
             # Reassemble with blank line between paragraphs
             response = "\n\n".join(paragraphs)
-            
+
             if not response.strip():
                 print(f"[Round {round_num}] Empty input, skipping")
                 return ""
-            
+
             print(f"\n[Round {round_num}] Submitted ({len(response)} chars)")
             return response
 
@@ -239,7 +261,8 @@ class DiscussionOrchestrator:
             return ""
 
         responses_data = [
-            {"model": r.model, "content": r.content, "round": r.round} for r in all_responses
+            {"model": r.model, "content": r.content, "round": r.round}
+            for r in all_responses
         ]
 
         threshold = self.config.discussion.consensus_threshold
@@ -253,21 +276,24 @@ class DiscussionOrchestrator:
 
         # Check if web search is enabled for the moderator
         use_tools = self.config.tools.web_search.enabled
-        
+
         # Get list of tool names for the system prompt
         tool_names = ["web_search"] if use_tools else None
-        
+
         if use_tools:
             # Use chat method with tools
             tools_config = self.config.tools.model_dump()
             tools = get_available_tools(tools_config)
             tool_executor = create_tool_executor(tools_config)
-            
+
             messages = [
-                {"role": "system", "content": ModeratorPrompt.system(threshold, tools=tool_names)},
+                {
+                    "role": "system",
+                    "content": ModeratorPrompt.system(threshold, tools=tool_names),
+                },
                 {"role": "user", "content": prompt},
             ]
-            
+
             response = await self.ollama.chat(
                 model=self.config.moderator.name,
                 messages=messages,
@@ -277,12 +303,14 @@ class DiscussionOrchestrator:
                 max_tokens=self.config.moderator.max_tokens,
                 num_ctx=self.config.moderator.num_ctx,
             )
-            
+
             full_text = response.message
-            
+
             # Log if tools were used
             if response.tool_calls:
-                print(f"[Round {round_num}] Moderator used {len(response.tool_calls)} tool call(s)")
+                print(
+                    f"[Round {round_num}] Moderator used {len(response.tool_calls)} tool call(s)"
+                )
                 for tc in response.tool_calls:
                     print(f"  - {tc.name}: {tc.arguments.get('query', 'N/A')}")
         else:
@@ -312,9 +340,12 @@ class DiscussionOrchestrator:
         # The full_text contains the moderator's original text which may have the definitive verdict
         if parsed["consensus_assessment"] == "REACHED":
             full_text_upper = full_text.upper()
-            if re.search(r'consensus\s*:\s*not\s*reached', full_text_upper) or \
-               re.search(r'consensus\s+not\s+reached', full_text_upper):
-                print("[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED")
+            if re.search(
+                r"consensus\s*:\s*not\s*reached", full_text_upper
+            ) or re.search(r"consensus\s+not\s+reached", full_text_upper):
+                print(
+                    "[Warning] Parser set consensus_assessment to REACHED but full_text contains NOT REACHED"
+                )
                 print("  - Updating consensus_assessment to NOT REACHED")
                 # Update the session with the corrected value
                 attributed = self.session.get_attributed_summary(round_num)
@@ -341,7 +372,7 @@ class DiscussionOrchestrator:
 
         # Check if web search is enabled for the moderator
         use_tools = self.config.tools.web_search.enabled
-        
+
         # Add tool instructions to system prompt if web search is enabled
         if use_tools:
             tool_instructions = """
@@ -352,18 +383,18 @@ You have access to a web search tool that can search Wikipedia for factual infor
 - Search Wikipedia to confirm information before including in your review
 """
             system_prompt = system_prompt + tool_instructions
-        
+
         if use_tools:
             # Use chat method with tools
             tools_config = self.config.tools.model_dump()
             tools = get_available_tools(tools_config)
             tool_executor = create_tool_executor(tools_config)
-            
+
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ]
-            
+
             response = await self.ollama.chat(
                 model=self.config.moderator.name,
                 messages=messages,
@@ -373,7 +404,7 @@ You have access to a web search tool that can search Wikipedia for factual infor
                 max_tokens=self.config.moderator.max_tokens,
                 num_ctx=self.config.moderator.num_ctx,
             )
-            
+
             return response.message
         else:
             # Use generate method (no tools)
@@ -391,21 +422,30 @@ You have access to a web search tool that can search Wikipedia for factual infor
     def _parse_json_block(text: str) -> dict | None:
         """Tier 1: Try to parse JSON block from moderator output."""
         import re
-        json_match = re.search(r'```(?:json)?\s*\n(.*?)\n```', text, re.DOTALL)
+
+        json_match = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
         if json_match:
             try:
                 parsed = json.loads(json_match.group(1))
-                if "individual_summaries" in parsed and "consensus_assessment" in parsed:
+                if (
+                    "individual_summaries" in parsed
+                    and "consensus_assessment" in parsed
+                ):
                     return {
                         "individual_summaries": parsed.get("individual_summaries", {}),
-                        "agreement_analysis": parsed.get("agreement_analysis", "(Not provided)"),
-                        "consensus_assessment": parsed.get("consensus_assessment", "NOT REACHED"),
+                        "agreement_analysis": parsed.get(
+                            "agreement_analysis", "(Not provided)"
+                        ),
+                        "consensus_assessment": parsed.get(
+                            "consensus_assessment", "NOT REACHED"
+                        ),
                         "confidence": parsed.get("confidence", "MEDIUM"),
                     }
             except json.JSONDecodeError:
                 pass  # Fall through to Markdown parsing
-        
+
         return None
+
     @staticmethod
     def _parse_markdown_summary(text: str, round_responses: list) -> dict:
         """Tier 2: Regex-based Markdown parsing (tolerant of LLM variations)."""
@@ -422,10 +462,12 @@ You have access to a web search tool that can search Wikipedia for factual infor
             stripped = line.strip()
 
             # HEADINGS: match 2-5 # with optional spacing
-            heading_match = re.match(r'^#{2,5}\s?(.*)', stripped)
+            heading_match = re.match(r"^#{2,5}\s?(.*)", stripped)
             if heading_match:
                 heading_text = heading_match.group(1).strip()
-                heading_level = len(heading_match.group(0)) - len(heading_match.group(0).lstrip('#'))
+                heading_level = len(heading_match.group(0)) - len(
+                    heading_match.group(0).lstrip("#")
+                )
 
                 # 3+ hashes (###) = individual model section
                 if heading_level >= 3 and heading_text:
@@ -437,7 +479,7 @@ You have access to a web search tool that can search Wikipedia for factual infor
                 elif heading_level == 2 and heading_text:
                     current_model = None
                     heading_lower = heading_text.lower()
-                    
+
                     if "final" in heading_lower and "consensus" in heading_lower:
                         current_section = "final_consensus"
                     elif "agreement" in heading_lower:
@@ -456,31 +498,36 @@ You have access to a web search tool that can search Wikipedia for factual infor
 
             # BULLETS: support - * • —
             if current_model:
-                bullet_match = re.match(r'^[-*•–—]\s+(.*)', stripped)
+                bullet_match = re.match(r"^[-*•–—]\s+(.*)", stripped)
                 if bullet_match:
-                    individual_summaries[current_model].append(bullet_match.group(1).strip())
+                    individual_summaries[current_model].append(
+                        bullet_match.group(1).strip()
+                    )
                     continue
 
             # CONSENSUS VERDICT: Parse in Final Consensus section, or fall back to Consensus Assessment
             # if no Final Consensus section exists
             if current_section == "final_consensus":
                 # Only look in the Final Consensus section for the definitive verdict
-                if re.search(r'consensus\s*:\s*', stripped, re.I):
+                if re.search(r"consensus\s*:\s*", stripped, re.I):
                     if "NOT REACHED" in stripped.upper():
                         consensus_assessment = "NOT REACHED"
                     elif "REACHED" in stripped.upper():
                         consensus_assessment = "REACHED"
-            elif current_section != "final_consensus" and consensus_assessment == "NOT REACHED":
+            elif (
+                current_section != "final_consensus"
+                and consensus_assessment == "NOT REACHED"
+            ):
                 # Fallback: if no Final Consensus section, look for Consensus Assessment anywhere
                 # Only applies if we haven't found a definitive verdict yet (default is NOT REACHED)
-                if re.search(r'consensus\s+assessment\s*:\s*', stripped, re.I):
+                if re.search(r"consensus\s+assessment\s*:\s*", stripped, re.I):
                     if "NOT REACHED" in stripped.upper():
                         consensus_assessment = "NOT REACHED"
                     elif "REACHED" in stripped.upper():
                         consensus_assessment = "REACHED"
 
             # CONFIDENCE: Can be in Final Consensus section
-            if re.search(r'confidence\s*:|CONFIDENCE:', stripped, re.I):
+            if re.search(r"confidence\s*:|CONFIDENCE:", stripped, re.I):
                 if "HIGH" in stripped.upper():
                     confidence = "HIGH"
                 elif "LOW" in stripped.upper():
@@ -489,7 +536,11 @@ You have access to a web search tool that can search Wikipedia for factual infor
                     confidence = "MEDIUM"
 
             # AGREEMENT ANALYSIS: collect text in agreement section
-            if current_section == "agreement" and stripped and not stripped.startswith("#"):
+            if (
+                current_section == "agreement"
+                and stripped
+                and not stripped.startswith("#")
+            ):
                 if not agreement_analysis:
                     agreement_analysis = stripped
                 else:
@@ -509,9 +560,11 @@ You have access to a web search tool that can search Wikipedia for factual infor
             # Check if agreement_analysis explicitly states consensus was NOT reached
             agreement_upper = agreement_analysis.upper()
             # Look for explicit "Consensus: NOT REACHED" or similar patterns in the analysis
-            if re.search(r'consensus\s*:\s*not\s*reached', agreement_upper) or \
-               re.search(r'consensus\s+not\s+reached', agreement_upper) or \
-               re.search(r'no\s+consensus', agreement_upper):
+            if (
+                re.search(r"consensus\s*:\s*not\s*reached", agreement_upper)
+                or re.search(r"consensus\s+not\s+reached", agreement_upper)
+                or re.search(r"no\s+consensus", agreement_upper)
+            ):
                 print("[Warning] Consensus assessment contradiction detected:")
                 print(f"  - consensus_assessment: {consensus_assessment}")
                 print("  - agreement_analysis contains: 'NOT REACHED'")
@@ -547,25 +600,36 @@ You have access to a web search tool that can search Wikipedia for factual infor
 
         if attributed.consensus_assessment == "NOT REACHED":
             agreement_analysis = attributed.agreement_analysis
-            if not agreement_analysis or agreement_analysis == "(Analysis not provided)":
+            if (
+                not agreement_analysis
+                or agreement_analysis == "(Analysis not provided)"
+            ):
                 return _ConsensusVerdict.NOT_REACHED
 
             agreement_lower = agreement_analysis.lower()
 
             # Only flag INCONSISTENT when the analysis explicitly says ALL participants
             # agree on the MAIN ANSWER (not just the premise, not just 2 of 3)
-            if re.search(r'(all.*participants?|all.*clusters?).*(agree|agreement|consensus).*main.*(answer|point|question)', agreement_lower):
+            if re.search(
+                r"(all.*participants?|all.*clusters?).*(agree|agreement|consensus).*main.*(answer|point|question)",
+                agreement_lower,
+            ):
                 return _ConsensusVerdict.INCONSISTENT
 
             # Also catch: "main answer.*agreed" with explicit universal quantification
-            if re.search(r'main.*(answer|point|question).*agreed.*(all|unanimously)', agreement_lower):
+            if re.search(
+                r"main.*(answer|point|question).*agreed.*(all|unanimously)",
+                agreement_lower,
+            ):
                 return _ConsensusVerdict.INCONSISTENT
 
             return _ConsensusVerdict.NOT_REACHED
 
         return _ConsensusVerdict.NOT_REACHED
 
-    def _calculate_agreement_percentage(self, sim_matrix: np.ndarray, threshold: float) -> float:
+    def _calculate_agreement_percentage(
+        self, sim_matrix: np.ndarray, threshold: float
+    ) -> float:
         if sim_matrix is None or sim_matrix.size == 0:
             return 0.0
 
@@ -590,7 +654,9 @@ You have access to a web search tool that can search Wikipedia for factual infor
         model_names: list[str],
     ) -> str:
         threshold = self.config.discussion.consensus_threshold
-        agreement_pct = self._calculate_agreement_percentage(similarity_matrix, threshold)
+        agreement_pct = self._calculate_agreement_percentage(
+            similarity_matrix, threshold
+        )
 
         reprompt = f"""The similarity matrix shows {agreement_pct:.1f}% of pairwise similarities exceed the {threshold} threshold, indicating strong agreement among participants.
 
@@ -614,7 +680,9 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
         response_text = response.response.upper()
 
         if "CHANGE" in response_text and "REACHED" in response_text:
-            print(f"[Round {round_num}] Reprompt: Moderator changed to REACHED based on similarity evidence")
+            print(
+                f"[Round {round_num}] Reprompt: Moderator changed to REACHED based on similarity evidence"
+            )
             return "REACHED"
         else:
             print(f"[Round {round_num}] Reprompt: Moderator kept original assessment")
@@ -643,8 +711,10 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
             texts = [r.content for r in all_responses]
             model_names = [r.model for r in all_responses]
 
-            similarity_result = await self.similarity_engine.calculate_similarity_matrix(
-                texts, model_names
+            similarity_result = (
+                await self.similarity_engine.calculate_similarity_matrix(
+                    texts, model_names
+                )
             )
 
             return ConsensusResult(
@@ -667,7 +737,9 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
             similarities_to_summary = []
             for r in all_responses:
                 resp_embedding = await self.similarity_engine.get_embedding(r.content)
-                sim = self.similarity_engine.cosine_similarity(resp_embedding, summary_embedding)
+                sim = self.similarity_engine.cosine_similarity(
+                    resp_embedding, summary_embedding
+                )
                 similarities_to_summary.append((r.model, sim))
 
             if attributed.consensus_assessment == "REACHED":
@@ -723,14 +795,18 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
             max_resp_round = max(r.round for r in self.session.responses)
             if max_resp_round > self.session.completed_rounds:
                 start_round = max_resp_round
-        
+
         # Determine starting model index if we are resuming a partial round
         current_model_index = 0
         # Calculate this regardless of start_round since we might be resuming internally in Round 1
         current_order = await self._rotate_model_order(start_round)
-        responded_in_round = {r.model for r in self.session.responses if r.round == start_round}
-        responded_in_round.update({r.model for r in self.session.human_responses if r.round == start_round})
-        
+        responded_in_round = {
+            r.model for r in self.session.responses if r.round == start_round
+        }
+        responded_in_round.update(
+            {r.model for r in self.session.human_responses if r.round == start_round}
+        )
+
         idx = 0
         while idx < len(current_order) and current_order[idx] in responded_in_round:
             idx += 1
@@ -755,13 +831,17 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                     total_participants = len(self.state.model_order)
 
                 # Start from the restored model index if it's the starting round
-                start_idx = self.state.current_model_index if round_num == start_round else 0
+                start_idx = (
+                    self.state.current_model_index if round_num == start_round else 0
+                )
                 for i in range(start_idx, len(self.state.model_order)):
                     if not self.state.is_running:
                         break
 
                     if self.state.skip_requested:
-                        print(f"[Round {round_num}] Skip requested. Jumping to summary.")
+                        print(
+                            f"[Round {round_num}] Skip requested. Jumping to summary."
+                        )
                         self.state.skip_requested = False
                         break
 
@@ -784,7 +864,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                     max_retries = 2
                     retry_count = 0
                     generated = None
-                    
+
                     while retry_count <= max_retries:
                         generated = await self.ollama.generate(
                             model=model_name,
@@ -795,22 +875,31 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                             num_ctx=model_config_obj.num_ctx,
                             images=self.session.images,
                         )
-                        
+
                         # Check if response is empty
                         if generated.response and generated.response.strip():
                             break  # Got valid response
-                        
+
                         retry_count += 1
                         if retry_count <= max_retries:
-                            print(f"[Round {round_num}] {model_name} returned empty response, retrying ({retry_count}/{max_retries})...")
+                            print(
+                                f"[Round {round_num}] {model_name} returned empty response, retrying ({retry_count}/{max_retries})..."
+                            )
                         else:
-                            print(f"[Round {round_num}] {model_name} still returned empty after {max_retries} retries, proceeding with empty content")
-                    
+                            print(
+                                f"[Round {round_num}] {model_name} still returned empty after {max_retries} retries, proceeding with empty content"
+                            )
+
                     response_text = generated
 
                     response_time_s = None
-                    if hasattr(generated, 'total_duration') and generated.total_duration is not None:
-                        response_time_s = round(generated.total_duration / 1_000_000_000, 2)
+                    if (
+                        hasattr(generated, "total_duration")
+                        and generated.total_duration is not None
+                    ):
+                        response_time_s = round(
+                            generated.total_duration / 1_000_000_000, 2
+                        )
 
                     print(
                         f"[Round {round_num}] {model_name} completed ({len(response_text.response)} chars, {response_time_s}s)"
@@ -854,6 +943,7 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         r.round == round_num for r in self.session.human_responses
                     )
 
+                    user_input = ""
                     if not human_already_responded:
                         user_input = await self._handle_human_input(
                             context=human_context,
@@ -875,20 +965,28 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
 
                 # Only generate summary if it doesn't exist for this round
                 if self.session.get_summary(round_num) is None:
-                    raw_consensus = await self._check_consensus(round_num, return_matrix=True)
+                    raw_consensus = await self._check_consensus(
+                        round_num, return_matrix=True
+                    )
                     sim_matrix_raw = raw_consensus.details.get("similarity_matrix")
-                    sim_matrix = np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
+                    sim_matrix = (
+                        np.array(sim_matrix_raw) if sim_matrix_raw is not None else None
+                    )
                     sim_names = raw_consensus.details.get("model_names", [])
 
                     if sim_matrix is not None:
-                        self.session.add_similarity_matrix(round_num, sim_matrix.tolist(), sim_names)
+                        self.session.add_similarity_matrix(
+                            round_num, sim_matrix.tolist(), sim_names
+                        )
 
                     summary = await self._generate_summary(
                         round_num, similarity_matrix=sim_matrix, model_names=sim_names
                     )
                     self.session.add_summary(round_num, summary)
 
-                    print(f"[Round {round_num}] Summary completed ({len(summary)} chars)")
+                    print(
+                        f"[Round {round_num}] Summary completed ({len(summary)} chars)"
+                    )
 
                     attributed = self.session.get_attributed_summary(round_num)
                     if attributed:
@@ -897,24 +995,32 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         )
                         print(f"[Round {round_num}] Individual summaries:")
                         for model, points in attributed.individual_summaries.items():
-                            print(f"  {model}: {points[0] if points else '(no points)'}")
+                            print(
+                                f"  {model}: {points[0] if points else '(no points)'}"
+                            )
 
                     if self.config.storage.auto_save:
                         await self.session_manager.save(self.session)
                 else:
-                    print(f"[Round {round_num}] Summary already exists, skipping generation")
+                    print(
+                        f"[Round {round_num}] Summary already exists, skipping generation"
+                    )
                     attributed = self.session.get_attributed_summary(round_num)
                     sim = self.session.get_similarity_matrix(round_num)
 
                     # Validate required data exists for consensus check
                     if not attributed:
-                        print(f"[Round {round_num}] Warning: Summary exists but attributed summary missing, regenerating...")
+                        print(
+                            f"[Round {round_num}] Warning: Summary exists but attributed summary missing, regenerating..."
+                        )
                         # Fall through to generate new summary
                         attributed = None
                         sim_matrix = None
                         sim_names = []
                     elif sim is None:
-                        print(f"[Round {round_num}] Warning: Summary exists but similarity matrix missing, regenerating...")
+                        print(
+                            f"[Round {round_num}] Warning: Summary exists but similarity matrix missing, regenerating..."
+                        )
                         # Fall through to generate new similarity matrix
                         sim_matrix = None
                         sim_names = []
@@ -925,74 +1031,110 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                 if self.config.discussion.mode == "moderator_decides":
                     if self.config.discussion.strictness == "main_point":
                         verdict = self._check_main_point_consensus(attributed)
-                        consensus_reached = False   # default, updated below if needed
+                        consensus_reached = False  # default, updated below if needed
 
                         if verdict is _ConsensusVerdict.REACHED:
                             consensus_reached = True
                         elif verdict is _ConsensusVerdict.INCONSISTENT:
-                            pass   # fall through to reprompt path
-                         # else: verdict is NOT_REACHED → stays False
+                            pass  # fall through to reprompt path
+                        # else: verdict is NOT_REACHED → stays False
 
-                        if verdict is not _ConsensusVerdict.REACHED and attributed and sim_matrix is not None:
+                        if (
+                            verdict is not _ConsensusVerdict.REACHED
+                            and attributed
+                            and sim_matrix is not None
+                        ):
                             threshold = self.config.discussion.consensus_threshold
-                            agreement_pct = self._calculate_agreement_percentage(sim_matrix, threshold)
+                            agreement_pct = self._calculate_agreement_percentage(
+                                sim_matrix, threshold
+                            )
 
                             # Option 3: Only reprompt on specific conditions (contradictions), not just similarity
                             # Check for clear contradictions in the moderator's reasoning
-                            full_text = attributed.full_text if hasattr(attributed, 'full_text') and attributed.full_text else ""
-                            agreement_text = attributed.agreement_analysis if attributed.agreement_analysis else ""
+                            full_text = (
+                                attributed.full_text
+                                if hasattr(attributed, "full_text")
+                                and attributed.full_text
+                                else ""
+                            )
+                            agreement_text = (
+                                attributed.agreement_analysis
+                                if attributed.agreement_analysis
+                                else ""
+                            )
                             combined_text = (full_text + " " + agreement_text).upper()
-                            
+
                             # Only reprompt if there's a CLEAR CONTRADICTION in the moderator's reasoning
                             has_contradiction = (
-                                re.search(r'(all|everyone|participants)\s+(agree|agree\w*)', agreement_text, re.I) and
-                                re.search(r'consensus\s*:\s*not\s*reached', combined_text)
+                                re.search(
+                                    r"(all|everyone|participants)\s+(agree|agree\w*)",
+                                    agreement_text,
+                                    re.I,
+                                )
+                                and re.search(
+                                    r"consensus\s*:\s*not\s*reached", combined_text
+                                )
                             ) or (
-                                re.search(r'no\s+disagreement', agreement_text, re.I) and
-                                re.search(r'consensus\s*:\s*not\s*reached', combined_text)
+                                re.search(r"no\s+disagreement", agreement_text, re.I)
+                                and re.search(
+                                    r"consensus\s*:\s*not\s*reached", combined_text
+                                )
                             )
-                            
+
                             if has_contradiction:
-                                print(f"[Round {round_num}] Contradiction detected in moderator reasoning. Reprompting for clarity...")
+                                print(
+                                    f"[Round {round_num}] Contradiction detected in moderator reasoning. Reprompting for clarity..."
+                                )
                                 revised = await self._reprompt_for_consensus(
                                     round_num, attributed, sim_matrix, sim_names
                                 )
                                 # Option 2: Reprompt is advisory only - moderator can consider similarity but decides
                                 # Only update if moderator explicitly changes their decision
-                                if revised and revised != attributed.consensus_assessment:
-                                    print(f"  - Similarity agreement: {agreement_pct:.1f}%")
+                                if (
+                                    revised
+                                    and revised != attributed.consensus_assessment
+                                ):
+                                    print(
+                                        f"  - Similarity agreement: {agreement_pct:.1f}%"
+                                    )
                                     print(f"  - Moderator revised to: {revised}")
                                     attributed.consensus_assessment = revised
-                                    consensus_reached = (revised == "REACHED")
+                                    consensus_reached = revised == "REACHED"
                             else:
                                 # No contradiction - keep moderator's original decision
-                                print(f"[Round {round_num}] Moderator assessment stands (no contradiction detected)")
+                                print(
+                                    f"[Round {round_num}] Moderator assessment stands (no contradiction detected)"
+                                )
 
-                         # Build ConsensusResult for TUI state (fix #1.1)
+                        # Build ConsensusResult for TUI state (fix #1.1)
                         _agreement_pct = 0.0
                         if sim_matrix is not None:
                             _agreement_pct = self._calculate_agreement_percentage(
                                 sim_matrix, self.config.discussion.consensus_threshold
-                             )
+                            )
                         _n = len(sim_names) if sim_names else 0
                         _total_pairs = _n * (_n - 1) // 2 if _n > 1 else 0
                         self.state.consensus_result = ConsensusResult(
                             reached=consensus_reached,
                             percentage=_agreement_pct,
-                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
+                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs)
+                            if _total_pairs > 0
+                            else 0,
                             total_pairs=_total_pairs,
                             method=self.config.discussion.consensus_method,
-                           )
+                        )
                     else:
                         consensus_reached = (
-                            attributed.consensus_assessment == "REACHED" if attributed else False
-                         )
+                            attributed.consensus_assessment == "REACHED"
+                            if attributed
+                            else False
+                        )
 
-                         # Build ConsensusResult for TUI state (fix #1.1)
+                        # Build ConsensusResult for TUI state (fix #1.1)
                         if sim_matrix is not None:
                             _agreement_pct = self._calculate_agreement_percentage(
                                 sim_matrix, self.config.discussion.consensus_threshold
-                              )
+                            )
                         else:
                             _agreement_pct = 100.0 if consensus_reached else 0.0
                         _n = len(sim_names) if sim_names else 0
@@ -1000,10 +1142,12 @@ Respond with ONLY "KEEP" or "CHANGE" followed by the word "REACHED" or "NOT REAC
                         self.state.consensus_result = ConsensusResult(
                             reached=consensus_reached,
                             percentage=_agreement_pct,
-                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs) if _total_pairs > 0 else 0,
+                            agreeing_pairs=int(_agreement_pct / 100 * _total_pairs)
+                            if _total_pairs > 0
+                            else 0,
                             total_pairs=_total_pairs,
                             method=self.config.discussion.consensus_method,
-                           )
+                        )
                 else:
                     consensus_result = await self._check_consensus(round_num)
                     self.state.consensus_result = consensus_result
