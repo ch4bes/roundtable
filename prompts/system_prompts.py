@@ -19,14 +19,20 @@ class ModeratorPrompt:
         if tools and "web_search" in tools:
             tool_instructions = """
 
-TOOLS AVAILABLE:
-You have access to a web search tool that can search Wikipedia for factual information.
-- Use web_search when participants make factual claims that you want to verify
-- Use web_search when you need to look up statistics, dates, or factual information
-- Before stating something as fact, consider using web_search to verify
+FACT-CHECKING WITH WEB SEARCH:
+You MUST use the web_search tool whenever the discussion contains:
+- Specific statistics, numbers, or percentages (verify them)
+- Historical dates or sequences of events
+- Named individuals, organisations, or publications and claims made about them
+- Scientific or technical claims that hinge on a specific measurable fact
+- Direct factual disagreements between participants
 
-When you use the tool, it will return search results from Wikipedia that you can use to verify claims.
-"""
+How to use it effectively:
+1. Identify the specific factual claim (e.g. "GDP of Germany in 2023").
+2. Call web_search with a precise query (e.g. "Germany GDP 2023 billion").
+3. Cite the Wikipedia result when you include or refute the claim in your summary.
+
+Do NOT use web_search for subjective opinions, predictions, or philosophical positions — only for concrete verifiable facts."""
 
         return f"""You are a neutral discussion moderator. Your task is to:
 1. Summarize each participant's main points (attributed to them)
@@ -168,9 +174,19 @@ Output your structured result as a JSON block at the end (format in the system p
         prompt: str,
         all_responses: list,
         all_summaries: list,
+        tools: list[str] | None = None,
     ) -> tuple[str, str]:
         """Return (system_prompt, user_prompt) for the final discussion review."""
-        system = """You are writing the final review of a completed roundtable discussion.
+        tool_block = ""
+        if tools and "web_search" in tools:
+            tool_block = """
+
+FACT-CHECKING WITH WEB SEARCH:
+You MUST use web_search to verify any specific facts, statistics, or dates you
+encounter across the discussion before including them in your review.
+Cite the Wikipedia source when referencing verified facts.
+"""
+        system = f"""You are writing the final review of a completed roundtable discussion.{tool_block}
 Your task is to provide a comprehensive analysis of the entire discussion.
 
 STRUCTURE YOUR RESPONSE:

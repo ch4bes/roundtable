@@ -313,6 +313,7 @@ class DiscussionOrchestrator:
                 temperature=self.config.moderator.temperature,
                 max_tokens=self.config.moderator.max_tokens,
                 num_ctx=self.config.moderator.num_ctx,
+                max_tool_calls=self.config.tools.max_tool_calls,
             )
 
             full_text = response.message
@@ -378,30 +379,19 @@ class DiscussionOrchestrator:
         if not all_responses:
             return "(No responses to analyze)"
 
+        use_tools = self.config.tools.web_search.enabled
+        tool_names = ["web_search"] if use_tools else None
+
         system_prompt, user_prompt = ModeratorPrompt.final_review(
             self.session.prompt,
             all_responses,
             all_summaries,
+            tools=tool_names,
         )
 
-        # Check if web search is enabled for the moderator
-        use_tools = self.config.tools.web_search.enabled
-
-        # Add tool instructions to system prompt if web search is enabled
         if use_tools:
-            tool_instructions = """
-
-TOOLS AVAILABLE:
-You have access to a web search tool that can search Wikipedia for factual information.
-- Use web_search when you need to verify facts, statistics, or dates
-- Search Wikipedia to confirm information before including in your review
-"""
-            system_prompt = system_prompt + tool_instructions
-
-        if use_tools:
-            # Use chat method with tools
             tools_config = self.config.tools.model_dump()
-            tools = get_available_tools(tools_config)
+            tools_list = get_available_tools(tools_config)
             tool_executor = create_tool_executor(tools_config)
 
             messages = [
@@ -412,16 +402,22 @@ You have access to a web search tool that can search Wikipedia for factual infor
             response = await self.ollama.chat(
                 model=self.config.moderator.name,
                 messages=messages,
-                tools=tools if tools else None,
+                tools=tools_list if tools_list else None,
                 tool_executor=tool_executor,
                 temperature=self.config.moderator.temperature,
                 max_tokens=self.config.moderator.max_tokens,
                 num_ctx=self.config.moderator.num_ctx,
+                max_tool_calls=self.config.tools.max_tool_calls,
             )
+
+            if response.tool_calls:
+                logger.info(
+                    "Final review: moderator used %d tool call(s)",
+                    len(response.tool_calls),
+                )
 
             return response.message
         else:
-            # Use generate method (no tools)
             response = await self.ollama.generate(
                 model=self.config.moderator.name,
                 prompt=user_prompt,

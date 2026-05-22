@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings
 
@@ -26,36 +27,46 @@ class EmbeddingsConfig(BaseModel):
 
 
 class DiscussionConfig(BaseModel):
-     # Consensus detection settings
+    # Consensus detection settings
     consensus_threshold: float = Field(default=0.75, ge=0, le=1)
     consensus_method: Literal["pairwise", "clustering"] = "clustering"
     mode: Literal["moderator_decides", "programmatic_decides"] = "moderator_decides"
     strictness: Literal["full", "main_point"] = "main_point"
-    
-     # Discussion flow settings
+
+    # Discussion flow settings
     max_rounds: int = Field(default=10, gt=0)
     rotation_order: Literal["sequential", "random", "fixed"] = "sequential"
     final_review_enabled: bool = True
-    
-     # Embedding-based similarity thresholds for _check_consensus:
+
+    # Embedding-based similarity thresholds for _check_consensus:
     consensus_agreement_when_reached: float = Field(
-        default=0.50, ge=0, le=1,
-        description="Similarity threshold when moderator assessed REACHED (lower bar)"
-     )
+        default=0.50,
+        ge=0,
+        le=1,
+        description="Similarity threshold when moderator assessed REACHED (lower bar)",
+    )
     consensus_agreement_when_not_reached: float = Field(
-        default=0.75, ge=0, le=1,
-        description="Similarity threshold when moderator assessed NOT REACHED (higher bar)"
-     )
+        default=0.75,
+        ge=0,
+        le=1,
+        description="Similarity threshold when moderator assessed NOT REACHED (higher bar)",
+    )
     reprompt_agreement_threshold: float = Field(
-        default=0.70, ge=0, le=1,
-        description="Agreement pct (0-1) at which moderator is reprompted to reconsider"
-     )
+        default=0.70,
+        ge=0,
+        le=1,
+        description="Agreement pct (0-1) at which moderator is reprompted to reconsider",
+    )
 
 
 class ContextConfig(BaseModel):
     mode: Literal["full", "summary_only", "summary_plus_last_n"] = "summary_only"
     last_n_responses: int = Field(default=2, gt=0)
-    response_preview_length: int = Field(default=800, ge=0, description="Max chars to show when displaying response previews. Use 0 for all characters.")
+    response_preview_length: int = Field(
+        default=800,
+        ge=0,
+        description="Max chars to show when displaying response previews. Use 0 for all characters.",
+    )
 
 
 class StorageConfig(BaseModel):
@@ -71,14 +82,24 @@ class HumanParticipantConfig(BaseModel):
 
 
 class WebSearchConfig(BaseModel):
-    """Configuration for web search tool."""
+    """Configuration for the web search tool."""
+
     enabled: bool = False
     timeout: int = 30
+    max_results: int = Field(
+        default=5, gt=0, description="Max Wikipedia results returned per query"
+    )
 
 
 class ToolsConfig(BaseModel):
     """Configuration for tools that models can use during discussions."""
+
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    max_tool_calls: int = Field(
+        default=5,
+        gt=0,
+        description="Max tool-call iterations the moderator may make per summary",
+    )
     # Future tools could be added here:
     # - code_execution: for running code snippets
     # - file_search: for searching local files
@@ -96,15 +117,17 @@ class Config(BaseSettings):
             ModelConfig(name="gemma4:31b"),
             ModelConfig(name="gemma4:26b"),
             ModelConfig(name="gemma4:e4b"),
-         ]
-     )
+        ]
+    )
     moderator: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             name="qwen3.6:35b-a3b", temperature=0.5, max_tokens=2048
-         )
-     )
+        )
+    )
     embeddings: EmbeddingsConfig = Field(default_factory=EmbeddingsConfig)
-    human_participant: HumanParticipantConfig = Field(default_factory=HumanParticipantConfig)
+    human_participant: HumanParticipantConfig = Field(
+        default_factory=HumanParticipantConfig
+    )
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     discussion: DiscussionConfig = Field(default_factory=DiscussionConfig)
     context: ContextConfig = Field(default_factory=ContextConfig)
@@ -133,5 +156,7 @@ class Config(BaseSettings):
     @classmethod
     def validate_models(cls, v) -> "Config":
         if len(v) < 2:
-            raise ValueError("At least 2 models are required for a roundtable discussion")
+            raise ValueError(
+                "At least 2 models are required for a roundtable discussion"
+            )
         return v
