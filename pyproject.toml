@@ -45,5 +45,16 @@ where = ["."]
 include = ["core", "tui", "storage", "prompts", "scripts"]
 exclude = ["tests*", ".*"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
+
 [project.urls]
-Homepage = "https://github.com/example/roundtable"
+Homepage = "https://github.com/ch4bes/roundtable"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "strict"
