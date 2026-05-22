@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import AsyncMock
-from core.config import Config, ModelConfig, DiscussionConfig, ContextConfig
+
+import pytest
+
+from core.config import Config, ContextConfig, DiscussionConfig, ModelConfig
 from core.discussion import DiscussionOrchestrator, DiscussionState, _ConsensusVerdict
+from core.summary_parser import SummaryParser
 from storage.session import Session
 
 
@@ -97,7 +100,7 @@ Consensus: NOT REACHED
 Confidence: HIGH
 Justification: Some disagreement"""
 
-        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        result = SummaryParser.parse(text, [])
         assert result["consensus_assessment"] == "NOT REACHED"
 
     def test_final_consensus_reached(self):
@@ -109,7 +112,7 @@ Justification: Some disagreement"""
 Consensus: REACHED
 Confidence: HIGH"""
 
-        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        result = SummaryParser.parse(text, [])
         assert result["consensus_assessment"] == "REACHED"
 
     def test_no_final_consensus_uses_earlier_reached(self):
@@ -119,7 +122,7 @@ Confidence: HIGH"""
 
 **Consensus Assessment:** REACHED (Confidence: HIGH)"""
 
-        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        result = SummaryParser.parse(text, [])
         assert result["consensus_assessment"] == "REACHED"
 
     def test_no_consensus_at_all(self):
@@ -127,12 +130,14 @@ Confidence: HIGH"""
 ### Model1
 - Point 1"""
 
-        result = DiscussionOrchestrator._parse_attributed_summary(None, text, [])
+        result = SummaryParser.parse(text, [])
         assert result["consensus_assessment"] == "NOT REACHED"
 
 
 class TestMainPointConsensus:
-    def test_full_agreement_triggers_inconsistency_when_moderator_says_not_reached(self):
+    def test_full_agreement_triggers_inconsistency_when_moderator_says_not_reached(
+        self,
+    ):
         from dataclasses import dataclass
 
         @dataclass
@@ -144,7 +149,7 @@ class TestMainPointConsensus:
         attributed = MockAttributed(
             agreement_analysis="**Areas of Full Agreement:** All participants agree on the main point.",
             consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            confidence="HIGH",
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -162,7 +167,7 @@ class TestMainPointConsensus:
         attributed = MockAttributed(
             agreement_analysis="There is overwhelming consensus among all participants.",
             consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            confidence="HIGH",
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -178,9 +183,7 @@ class TestMainPointConsensus:
             confidence: str
 
         attributed = MockAttributed(
-            agreement_analysis="",
-            consensus_assessment="REACHED",
-            confidence="HIGH"
+            agreement_analysis="", consensus_assessment="REACHED", confidence="HIGH"
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -198,7 +201,7 @@ class TestMainPointConsensus:
         attributed = MockAttributed(
             agreement_analysis="No agreement yet. Models disagree on the main point.",
             consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            confidence="HIGH",
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -216,7 +219,7 @@ class TestMainPointConsensus:
         attributed = MockAttributed(
             agreement_analysis="**Agreement Analysis:** `gemma4:e4b` and `qwen3.5:9b` fully agree on the core thesis that best is subjective.",
             consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            confidence="HIGH",
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -234,7 +237,7 @@ class TestMainPointConsensus:
         attributed = MockAttributed(
             agreement_analysis="Analysis: While examples differ, all clusters agree on the main answer that no single best exists.",
             consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            confidence="HIGH",
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -250,9 +253,7 @@ class TestMainPointConsensus:
             confidence: str
 
         attributed = MockAttributed(
-            agreement_analysis="",
-            consensus_assessment="NOT REACHED",
-            confidence="HIGH"
+            agreement_analysis="", consensus_assessment="NOT REACHED", confidence="HIGH"
         )
 
         result = DiscussionOrchestrator._check_main_point_consensus(None, attributed)
@@ -306,6 +307,7 @@ class TestConsensusResultInModeratorMode:
     async def test_consensus_result_set_main_point_reached(self):
         """moderator_decides + main_point: verdict REACHED -> consensus_result is set."""
         from core.config import DiscussionConfig
+
         config = Config(
             models=[
                 ModelConfig(name="model1"),
@@ -314,7 +316,9 @@ class TestConsensusResultInModeratorMode:
             discussion=DiscussionConfig(max_rounds=1),
             context=ContextConfig(mode="summary_only"),
         )
-        config.discussion = DiscussionConfig(mode="moderator_decides", strictness="main_point")
+        config.discussion = DiscussionConfig(
+            mode="moderator_decides", strictness="main_point"
+        )
 
         session = Session(prompt="test prompt", config={})
         orchestrator = DiscussionOrchestrator(
@@ -324,12 +328,15 @@ class TestConsensusResultInModeratorMode:
         )
 
         orchestrator._check_main_point_consensus = lambda a: _ConsensusVerdict.REACHED
-        assert orchestrator._check_main_point_consensus(None) is _ConsensusVerdict.REACHED
+        assert (
+            orchestrator._check_main_point_consensus(None) is _ConsensusVerdict.REACHED
+        )
 
     @pytest.mark.asyncio
     async def test_consensus_result_set_main_point_not_reached(self):
         """moderator_decides + main_point: verdict NOT_REACHED -> consensus_result should be set."""
         from core.config import DiscussionConfig
+
         config = Config(
             models=[
                 ModelConfig(name="model1"),
@@ -338,7 +345,9 @@ class TestConsensusResultInModeratorMode:
             discussion=DiscussionConfig(max_rounds=1),
             context=ContextConfig(mode="summary_only"),
         )
-        config.discussion = DiscussionConfig(mode="moderator_decides", strictness="main_point")
+        config.discussion = DiscussionConfig(
+            mode="moderator_decides", strictness="main_point"
+        )
 
         session = Session(prompt="test prompt", config={})
         orchestrator = DiscussionOrchestrator(
@@ -347,5 +356,10 @@ class TestConsensusResultInModeratorMode:
             progress_callback=AsyncMock(),
         )
 
-        orchestrator._check_main_point_consensus = lambda a: _ConsensusVerdict.NOT_REACHED
-        assert orchestrator._check_main_point_consensus(None) is _ConsensusVerdict.NOT_REACHED
+        orchestrator._check_main_point_consensus = lambda a: (
+            _ConsensusVerdict.NOT_REACHED
+        )
+        assert (
+            orchestrator._check_main_point_consensus(None)
+            is _ConsensusVerdict.NOT_REACHED
+        )
