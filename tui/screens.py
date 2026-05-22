@@ -1,13 +1,14 @@
+import asyncio
+
+from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import (
-    Static,
     Button,
     DataTable,
+    Static,
     TextArea,
 )
-from textual.containers import Vertical, Horizontal
-from textual.message import Message
-import asyncio
 
 
 class PromptScreen(ModalScreen):
@@ -71,11 +72,28 @@ class ConfigScreen(ModalScreen):
 
 
 class SessionListScreen(ModalScreen):
-    def __init__(self, load_sessions_fn, on_select_fn, on_delete_fn=None, *args, **kwargs):
+    def __init__(
+        self, load_sessions_fn, on_select_fn, on_delete_fn=None, *args, **kwargs
+    ):
         super().__init__(*args, **kwargs)
         self._load_sessions_fn = load_sessions_fn
         self._on_select_fn = on_select_fn
         self._on_delete_fn = on_delete_fn
+        self._tasks: set[asyncio.Task] = set()
+
+    def _create_task(self, coro) -> asyncio.Task:
+        """Create a tracked task that is automatically cancelled on screen unmount."""
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(lambda t: self._tasks.discard(t))
+        return task
+
+    def on_unmount(self) -> None:
+        """Cancel any in-flight tasks when the screen is removed from the DOM."""
+        for task in list(self._tasks):
+            if not task.done():
+                task.cancel()
+        self._tasks.clear()
 
     def compose(self) -> None:
         """Yield the saved sessions list screen layout."""
@@ -115,11 +133,12 @@ class SessionListScreen(ModalScreen):
                         str(session.get("completed_rounds", 0)),
                         session["created_at"][:19],
                         key=session["id"],
-                  )
+                    )
             except Exception as e:
-                self.notify(f"Failed to load sessions: {e}", severity="error")
+                if self.is_attached:
+                    self.notify(f"Failed to load sessions: {e}", severity="error")
 
-        asyncio.create_task(load())
+        self._create_task(load())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses: load, delete, or cancel the session list."""
@@ -129,22 +148,36 @@ class SessionListScreen(ModalScreen):
             if table.cursor_row is not None:
                 row_key = table.get_row_at(table.cursor_row).key
                 if row_key:
+
                     async def _safe_select():
                         try:
                             await self._on_select_fn(row_key)
                         except Exception as e:
-                            self.notify(f"Failed to load session: {e}", severity="error")
-                    asyncio.create_task(_safe_select())
+                            if self.app.is_running:
+                                self.app.notify(
+                                    f"Failed to load session: {e}", severity="error"
+                                )
+
+                    self.app._safe_create_task(
+                        _safe_select(), "", "Failed to load session"
+                    )
                     self.app.pop_screen()
         elif event.button.id == "delete":
             if table.cursor_row is not None:
                 row_key = table.get_row_at(table.cursor_row).key
                 if row_key and self._on_delete_fn:
+
                     async def _do_delete():
                         await self._on_delete_fn(row_key)
-                    asyncio.create_task(_do_delete())
+
+                    self.app._safe_create_task(
+                        _do_delete(), "", "Failed to delete session"
+                    )
                 else:
-                    self.notify("Delete not implemented or no session selected", severity="warning")
+                    self.notify(
+                        "Delete not implemented or no session selected",
+                        severity="warning",
+                    )
         elif event.button.id == "cancel":
             self.app.pop_screen()
 
@@ -154,6 +187,21 @@ class ExportScreen(ModalScreen):
         super().__init__(*args, **kwargs)
         self.session = session
         self.default_format = default_format
+        self._tasks: set[asyncio.Task] = set()
+
+    def _create_task(self, coro) -> asyncio.Task:
+        """Create a tracked task that is automatically cancelled on screen unmount."""
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(lambda t: self._tasks.discard(t))
+        return task
+
+    def on_unmount(self) -> None:
+        """Cancel any in-flight tasks when the screen is removed from the DOM."""
+        for task in list(self._tasks):
+            if not task.done():
+                task.cancel()
+        self._tasks.clear()
 
     def compose(self) -> None:
         """Yield the export format selection screen layout."""
@@ -178,25 +226,23 @@ class ExportScreen(ModalScreen):
 
             async def do_export():
                 """Export the session to a file in the requested format."""
-                try:
-                    from storage import Exporter
+                from storage import Exporter
 
-                    filename = f"discussion_{self.session.id[:8]}.{file_format}"
-                    config_snapshot = self.session.config_snapshot or {}
-                    path = (
-                        Path(
-                            config_snapshot.get("storage", {}).get(
-                              "sessions_dir", "./sessions"
-                          )
-                      )
-                      / filename
-                  )
-                    await Exporter.export(self.session, path, file_format)
-                    self.notify(f"Exported to {path}", severity="information")
+                filename = f"discussion_{self.session.id[:8]}.{file_format}"
+                config_snapshot = self.session.config_snapshot or {}
+                path = (
+                    Path(
+                        config_snapshot.get("storage", {}).get(
+                            "sessions_dir", "./sessions"
+                        )
+                    )
+                    / filename
+                )
+                await Exporter.export(self.session, path, file_format)
+                if self.app.is_running:
+                    self.app.notify(f"Exported to {path}", severity="information")
                     self.app.pop_screen()
-                except Exception as e:
-                    self.notify(f"Export failed: {e}", severity="error")
 
-            asyncio.create_task(do_export())
+            self._create_task(do_export())
         elif event.button.id == "cancel":
             self.app.pop_screen()

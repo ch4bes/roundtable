@@ -1,27 +1,28 @@
-from textual.app import App, ComposeResult
-from textual.widgets import (
-    Header,
-    Footer,
-    Button,
-)
-from textual.containers import Container, Vertical
-from textual.binding import Binding
-from textual import work
 import asyncio
 import sys
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Container, Vertical
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+)
 
 from core import Config, DiscussionOrchestrator
 from core.discussion import DiscussionState
 from storage import Session, SessionManager
-from tui.widgets import (
-    TranscriptDisplay,
-    SimilarityMatrix,
-    StatusPanel,
-)
 from tui.screens import (
+    ExportScreen,
     PromptScreen,
     SessionListScreen,
-    ExportScreen,
+)
+from tui.widgets import (
+    SimilarityMatrix,
+    StatusPanel,
+    TranscriptDisplay,
 )
 
 
@@ -86,10 +87,10 @@ class RoundtableApp(App):
             self.config = Config.load(self.config_path)
             self.session_manager = SessionManager(self.config.storage.sessions_dir)
             self.sub_title = f"Configured with {len(self.config.models)} models"
-            
+
             # Validate models exist in Ollama (permissive - warn but don't fail)
             asyncio.create_task(self._validate_models_on_startup())
-            
+
             self._show_prompt_screen()
         except Exception as e:
             self.notify(f"Error loading config: {e}", severity="error")
@@ -99,12 +100,14 @@ class RoundtableApp(App):
         """Validate that configured models exist in Ollama (permissive - warn but don't fail)."""
         try:
             from core.ollama_client import OllamaClient
-            
+
             client = OllamaClient(
                 base_url=self.config.ollama.base_url,
                 timeout=self.config.ollama.timeout,
             )
-            all_names = {m.name for m in self.config.models} | {self.config.moderator.name}
+            all_names = {m.name for m in self.config.models} | {
+                self.config.moderator.name
+            }
             missing = await client.check_models(list(all_names))
             for name in missing:
                 self.notify(
@@ -143,7 +146,9 @@ class RoundtableApp(App):
                 else:
                     self.notify("Failed to delete session", severity="error")
 
-        self.push_screen(SessionListScreen(load_sessions, on_select, on_delete=on_delete))
+        self.push_screen(
+            SessionListScreen(load_sessions, on_select, on_delete=on_delete)
+        )
 
     async def _load_session(self, session_id: str) -> None:
         session = await self.session_manager.load(session_id)
@@ -190,9 +195,13 @@ class RoundtableApp(App):
         similarity_matrix = self.query_one("#similarity-matrix", SimilarityMatrix)
         if state.consensus_result and hasattr(state.consensus_result, "details"):
             try:
-                await similarity_matrix.update_from_orchestrator(self.orchestrator, state.current_round)
+                await similarity_matrix.update_from_orchestrator(
+                    self.orchestrator, state.current_round
+                )
             except Exception as e:
-                print(f"Warning: Failed to update similarity matrix: {e}", file=sys.stderr)
+                print(
+                    f"Warning: Failed to update similarity matrix: {e}", file=sys.stderr
+                )
 
         transcript = self.query_one("#transcript", TranscriptDisplay)
         transcript.scroll_end()
@@ -255,7 +264,7 @@ class RoundtableApp(App):
         async def _wrapper():
             try:
                 await coro
-                if app.is_running:
+                if app.is_running and on_success:
                     app.notify(on_success)
             except asyncio.CancelledError:
                 return
@@ -326,7 +335,9 @@ class RoundtableApp(App):
     def action_open_session(self) -> None:
         """Open the session list screen to load a saved session."""
         if self.discussion_running:
-            self.notify("Cannot open session while discussion is running", severity="warning")
+            self.notify(
+                "Cannot open session while discussion is running", severity="warning"
+            )
             return
         self._show_session_list()
 
@@ -346,7 +357,10 @@ class RoundtableApp(App):
         elif button_id == "skip-btn":
             if self.orchestrator:
                 self.orchestrator.state.skip_requested = True
-                self.notify("Skipping remaining participants in round...", severity="information")
+                self.notify(
+                    "Skipping remaining participants in round...",
+                    severity="information",
+                )
             else:
                 self.notify("No active discussion to skip", severity="warning")
         elif button_id == "export-btn":
