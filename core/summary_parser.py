@@ -179,11 +179,10 @@ class SummaryParser:
         # Guard against contradiction: agreement_analysis says NOT REACHED but
         # consensus_assessment was set to REACHED.
         if consensus_assessment == "REACHED" and agreement_analysis:
-            agreement_upper = agreement_analysis.upper()
             if (
-                re.search(r"consensus\s*:\s*not\s*reached", agreement_upper)
-                or re.search(r"consensus\s+not\s+reached", agreement_upper)
-                or re.search(r"no\s+consensus", agreement_upper)
+                re.search(r"consensus\s*:\s*not\s*reached", agreement_analysis, re.I)
+                or re.search(r"consensus\s+not\s+reached", agreement_analysis, re.I)
+                or re.search(r"no\s+consensus", agreement_analysis, re.I)
             ):
                 logger.warning(
                     "Consensus assessment contradiction: "

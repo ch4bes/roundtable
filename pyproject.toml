@@ -49,6 +49,9 @@ exclude = ["tests*", ".*"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
+    # textual is also a runtime dep, but listed here so `pip install -e .[dev]`
+    # is a self-contained dev-environment bootstrap (no separate install step).
+    "textual>=0.50.0",
 ]
 
 [project.urls]

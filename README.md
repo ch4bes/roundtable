@@ -53,8 +53,8 @@ python3 -m venv venv
 # Activate the virtual environment
 source venv/bin/activate
 
-# Install the package in editable mode
-python3 -m pip install -e .
+# Install the package with dev dependencies (pytest, textual, etc.)
+python3 -m pip install -e ".[dev]"
 
 # Run tests
 python3 -m pytest
