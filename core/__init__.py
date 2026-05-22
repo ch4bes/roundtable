@@ -11,6 +11,7 @@ from .llm_client import (
     LLMClient,
     ToolCall,
 )
+from .log import setup_logging
 from .ollama_client import OllamaClient
 from .similarity import SimilarityEngine
 from .summary_parser import SummaryParser
@@ -25,6 +26,7 @@ __all__ = [
     "ChatResponse",
     "OllamaClient",
     "DiscussionOrchestrator",
+    "setup_logging",
     "SimilarityEngine",
     "SummaryParser",
     "ConsensusDetector",
