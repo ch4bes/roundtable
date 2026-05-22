@@ -1,6 +1,6 @@
-from textual.widgets import Static, DataTable
-from textual.reactive import reactive
 import numpy as np
+from textual.reactive import reactive
+from textual.widgets import DataTable, Static
 
 
 class TranscriptDisplay(Static):
@@ -19,20 +19,30 @@ class TranscriptDisplay(Static):
         self._lines.clear()
         self._update_display()
 
-    def add_response(self, model: str, content: str, round_num: int, response_time_s: float | None = None) -> None:
+    def add_response(
+        self,
+        model: str,
+        content: str,
+        round_num: int,
+        response_time_s: float | None = None,
+    ) -> None:
         """Append a model response to the transcript and refresh the display."""
         time_str = ""
         if response_time_s is not None:
             if response_time_s >= 1:
                 time_str = f" — {response_time_s:.1f}s"
             else:
-                time_str = f" — {response_time_s*1000:.0f}ms"
-        self._lines.append(f"[bold]● {model} (Round {round_num}){time_str}[/bold]\n{content}")
+                time_str = f" — {response_time_s * 1000:.0f}ms"
+        self._lines.append(
+            f"[bold]● {model} (Round {round_num}){time_str}[/bold]\n{content}"
+        )
         self._update_display()
 
     def add_summary(self, summary: str, round_num: int) -> None:
         """Append a round summary to the transcript and refresh the display."""
-        self._lines.append(f"[bold cyan]📝 Summary (Round {round_num})[/bold cyan]\n{summary}")
+        self._lines.append(
+            f"[bold cyan]📝 Summary (Round {round_num})[/bold cyan]\n{summary}"
+        )
         self._update_display()
 
     def add_system_message(self, message: str) -> None:
@@ -54,7 +64,6 @@ class TranscriptDisplay(Static):
 class SimilarityMatrix(Static):
     """Display a pairwise semantic similarity matrix as a DataTable."""
 
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._matrix: np.ndarray | None = None
@@ -65,10 +74,20 @@ class SimilarityMatrix(Static):
         yield DataTable(id="matrix-table")
 
     async def update_from_orchestrator(self, orchestrator, round_num: int) -> None:
-        """Compute and display the similarity matrix from the orchestrator's current round."""
+        """Display the similarity matrix for *round_num*.
+
+        Reads from the session cache first to avoid redundant recomputation.
+        Falls back to computing via the similarity engine only when the matrix
+        has not yet been stored in the session (e.g. during the current round).
+        """
         if not orchestrator or not orchestrator.session:
             return
 
+        # Prefer the already-computed matrix stored in the session.
+        if self.load_from_session(orchestrator.session, round_num):
+            return
+
+        # Matrix not cached yet — compute it (current round, pre-summary).
         round_responses = orchestrator.session.get_round_responses(round_num)
         if len(round_responses) < 2:
             return
@@ -76,8 +95,10 @@ class SimilarityMatrix(Static):
         texts = [r.content for r in round_responses]
         self._model_names = [r.model for r in round_responses]
 
-        similarity_result = await orchestrator.similarity_engine.calculate_similarity_matrix(
-            texts, self._model_names
+        similarity_result = (
+            await orchestrator.similarity_engine.calculate_similarity_matrix(
+                texts, self._model_names
+            )
         )
 
         self._matrix = similarity_result.matrix
@@ -112,7 +133,7 @@ class SimilarityMatrix(Static):
 
         n = len(self._model_names)
         n_matrix = self._matrix.shape[0] if self._matrix.size > 0 else 0
-        
+
         if n != n_matrix:
             table.add_row("Dimension mismatch error")
             return
@@ -134,7 +155,6 @@ class SimilarityMatrix(Static):
 
 class StatusPanel(Static):
     """Display discussion status: round, model, consensus percentage."""
-
 
     current_round: reactive[int] = reactive(1)
     max_rounds: reactive[int] = reactive(10)
@@ -166,7 +186,9 @@ class StatusPanel(Static):
         content_widget = self.query_one("#status-content", Static)
 
         status_icon = "⏸" if self.is_paused else "▶" if self.is_running else "⏹"
-        status_color = "yellow" if self.is_paused else "green" if self.is_running else "red"
+        status_color = (
+            "yellow" if self.is_paused else "green" if self.is_running else "red"
+        )
 
         lines = [
             f"[{status_color}]{status_icon}[/{status_color}] Status: {'Running' if self.is_running else 'Paused' if self.is_paused else 'Stopped'}",
@@ -182,7 +204,6 @@ class StatusPanel(Static):
 
 class ModelSelector(Static):
     """Display checkboxes for selecting participant models."""
-
 
     def __init__(self, models: list[str], *args, **kwargs):
         super().__init__(*args, **kwargs)
