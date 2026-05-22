@@ -1,7 +1,8 @@
-import numpy as np
-from typing import Literal, Deque
-from dataclasses import dataclass
 from collections import deque
+from dataclasses import dataclass
+from typing import Any, Deque, Literal
+
+import numpy as np
 
 
 @dataclass
@@ -11,12 +12,14 @@ class ConsensusResult:
     agreeing_pairs: int
     total_pairs: int
     method: Literal["pairwise", "clustering"]
-    details: dict | None = None
+    details: dict[str, Any] | None = None
 
 
 class ConsensusDetector:
     def __init__(
-        self, threshold: float = 0.85, method: Literal["pairwise", "clustering"] = "pairwise"
+        self,
+        threshold: float = 0.85,
+        method: Literal["pairwise", "clustering"] = "pairwise",
     ):
         self.threshold = threshold
         self.method = method
@@ -136,7 +139,10 @@ class ConsensusDetector:
                 node = queue.popleft()
                 cluster.append(node)
                 for neighbour in range(n):
-                    if not visited[neighbour] and similarity_matrix[node, neighbour] >= self.threshold:
+                    if (
+                        not visited[neighbour]
+                        and similarity_matrix[node, neighbour] >= self.threshold
+                    ):
                         visited[neighbour] = True
                         queue.append(neighbour)
 
