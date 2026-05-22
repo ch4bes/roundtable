@@ -1,10 +1,11 @@
 import json
 import os
 import uuid
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
-from dataclasses import dataclass, asdict
+
 import aiofiles
 
 from .utils import sanitize_session_id, validate_path_within
@@ -83,7 +84,14 @@ class Session:
         self.similarity_matrices: list[dict] = []
         self.final_review: str | None = None
 
-    def add_response(self, model: str, content: str, round_num: int, position: int, response_time_s: float | None = None) -> Response:
+    def add_response(
+        self,
+        model: str,
+        content: str,
+        round_num: int,
+        position: int,
+        response_time_s: float | None = None,
+    ) -> Response:
         """Record a model response for a given round."""
         response = Response(
             model=model,
@@ -97,7 +105,9 @@ class Session:
         self.updated_at = datetime.now().isoformat()
         return response
 
-    def add_human_response(self, content: str, round_num: int, position: int) -> Response:
+    def add_human_response(
+        self, content: str, round_num: int, position: int
+    ) -> Response:
         """Record a human-in-the-loop response for a given round."""
         response = Response(
             model="human",
@@ -121,7 +131,7 @@ class Session:
             timestamp=datetime.now().isoformat(),
         )
         self.summaries.append(round_summary)
-        self.completed_rounds = round_num
+        self.completed_rounds = max(self.completed_rounds, round_num)
         self.updated_at = datetime.now().isoformat()
         return round_summary
 
@@ -144,7 +154,7 @@ class Session:
             timestamp=datetime.now().isoformat(),
         )
         self.attributed_summaries.append(attr_summary)
-        self.completed_rounds = round_num
+        self.completed_rounds = max(self.completed_rounds, round_num)
         self.updated_at = datetime.now().isoformat()
         return attr_summary
 
@@ -158,7 +168,9 @@ class Session:
         self.status = "stopped"
         self.updated_at = datetime.now().isoformat()
 
-    def add_similarity_matrix(self, round_num: int, matrix: list[list[float]], model_names: list[str]) -> None:
+    def add_similarity_matrix(
+        self, round_num: int, matrix: list[list[float]], model_names: list[str]
+    ) -> None:
         """Store the similarity matrix from the SimilarityEngine."""
         matrix_entry = {
             "round": round_num,
@@ -270,7 +282,9 @@ class Session:
         session.updated_at = data["updated_at"]
         session.status = data["status"]
         session.responses = [Response(**r) for r in data.get("responses", [])]
-        session.human_responses = [Response(**r) for r in data.get("human_responses", [])]
+        session.human_responses = [
+            Response(**r) for r in data.get("human_responses", [])
+        ]
         session.summaries = [RoundSummary(**s) for s in data.get("summaries", [])]
         session.attributed_summaries = [
             AttributedSummary(**a) for a in data.get("attributed_summaries", [])
@@ -295,10 +309,17 @@ class SessionManager:
         return validate_path_within(self.sessions_dir.resolve(), path.resolve())
 
     async def save(self, session: Session) -> Path:
-        """Save a session to disk as JSON."""
+        """Save a session to disk as JSON via an atomic write (write-temp + rename).
+
+        Writing to a temporary file then renaming is atomic on POSIX systems,
+        preventing a partial file from being read if the process crashes mid-write.
+        """
         path = self._get_session_path(session.id)
-        async with aiofiles.open(path, "w") as f:
-            await f.write(json.dumps(session.to_dict(), indent=2))
+        tmp_path = path.with_suffix(".tmp")
+        data = json.dumps(session.to_dict(), indent=2)
+        async with aiofiles.open(tmp_path, "w") as f:
+            await f.write(data)
+        tmp_path.replace(path)  # atomic on POSIX; best-effort on Windows
         return path
 
     async def load(self, session_id: str) -> Session | None:
