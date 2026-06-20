@@ -241,7 +241,7 @@ roundtable/
 
 ### Sample Output
 
-See exported Markdown files in `sessions/` directory for examples.
+[Which country has the best healthcare system?](https://gist.github.com/ch4bes/3f243e9c7a45ff933e91854e7374c91d)
 
 ## Troubleshooting
 
